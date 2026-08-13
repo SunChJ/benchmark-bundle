@@ -1,152 +1,115 @@
 # DeepSeek CLI Harness Benchmark
 
-Run the same prompt through `pi` and `codex-ds` with the DeepSeek V4 Flash/Pro
-models at `high` and `max` reasoning levels. Every invocation starts from an
-empty workspace and writes auditable raw output plus execution metadata.
+This repository prepares reproducible case directories and prints interactive
+CLI commands. It does not launch a terminal, submit the prompt, monitor the
+process, or collect result metadata.
 
-## Quick start
+Install the harnesses you want to compare. Claude Code can be installed with
+`npm install -g @anthropic-ai/claude-code`; Claude cases also use the existing
+Pi DeepSeek credential through Pi's credential helper.
 
-```bash
-./benchmark doctor
-./benchmark list
-./benchmark run /absolute/path/to/prompt.md
-```
+## Run
 
-The prompt can also be piped without creating a file first:
+Paste the benchmark prompt into `prompts.md`, then prepare a timestamped run:
 
 ```bash
-pbpaste | ./benchmark run -
+./prepare.sh
 ```
 
-Resume one captured session interactively:
+This creates `runs/YYYYMMDDHHMMSS/prompts.md` and records that directory as the
+current run. Generate a command for one case:
 
 ```bash
-./benchmark resume runs/<timestamp>/pi-flash-high
-./benchmark resume runs/<timestamp>/codex-ds-pro-max
+./run-case pi-flash-high
 ```
 
-The canonical resume command is also printed after each case and stored in both
-`manifest.json` and the case's `metadata.json`.
+`run-case` creates an empty `runs/YYYYMMDDHHMMSS/<case>/` directory and prints
+one shell command. Copy that command into any terminal. When the interactive
+CLI is ready, paste the contents of the displayed `prompts.md` path manually.
+The command keeps the normal user `HOME` but confines all filesystem writes to
+the case directory with macOS Seatbelt.
 
-Run only selected cases:
+Repeat `run-case` while its case directory is empty to print the same command
+again. Once the directory contains output, prepare a new timestamped run rather
+than reusing the sample.
+
+An explicit prompt file or stdin can also be used:
 
 ```bash
-./benchmark run prompt.md \
-  --case pi-flash-high \
-  --case codex-ds-flash-high
+./prepare.sh /absolute/path/to/prompt.md
+pbpaste | ./prepare.sh -
 ```
 
-Comma-separated case names are also accepted. The default per-case timeout is
-two hours; override it with `--timeout SECONDS`. Use `--output PATH` to change
-the result root for one run. The default concurrency is two; use `--jobs 1` for
-strictly sequential execution. Values above two are rejected.
+## Cases
 
-`codex-ds` is currently a shell alias rather than an executable. The runner
-therefore invokes `codex --profile deepseek` directly and explicitly overrides
-the model and reasoning level for every case.
+- `pi-flash-high`
+- `pi-flash-max`
+- `pi-pro-high`
+- `pi-pro-max`
+- `codex-ds-flash-high`
+- `codex-ds-flash-max`
+- `codex-ds-pro-high`
+- `codex-ds-pro-max`
+- `claude-ds-flash-high`
+- `claude-ds-flash-max`
+- `claude-ds-pro-high`
+- `claude-ds-pro-max`
 
-## Matrix
+## Launch configuration
 
-The ordered matrix lives in `benchmark.config.json`:
+Commands use the normal user `HOME`, so Keychain and normal shell behavior are
+unchanged. Harness state is redirected to
+`<case>/.benchmark-runtime/{pi,codex,claude}`, and `TMPDIR`, `TMP`, `TEMP`, XDG cache,
+npm, pip, uv, and Playwright paths are redirected below
+`<case>/.benchmark-runtime/`. There is no benchmark-specific system or
+developer prompt.
 
-1. `pi-flash-high`
-2. `pi-flash-max`
-3. `pi-pro-high`
-4. `pi-pro-max`
-5. `codex-ds-flash-high`
-6. `codex-ds-flash-max`
-7. `codex-ds-pro-high`
-8. `codex-ds-pro-max`
+Pi explicitly disables extensions, skills, prompt templates, themes, context
+files, and project-local approval resources. Its credential is resolved once
+through Pi's own auth command before launch and passed only to the sandboxed
+process; settings, model caches, and sessions remain case-local. The host's
+`~/.pi/agent/settings.json` and `auth.json` are never writable.
+Codex uses the existing `deepseek` profile through a case-local `CODEX_HOME`,
+overrides model and reasoning effort on the command line, disables project
+instruction ingestion and optional integrations, and does not load the host
+`config.toml` or its MCP server definitions. Its profile is copied into the
+case instead of symlinked, so TUI persistence cannot reach the host profile.
+The detected Git root is pre-marked trusted only in the disposable base config
+to skip the startup trust prompt; the outer Seatbelt still prevents writes
+outside the case. No incomplete MCP overrides are generated in the clean
+runtime.
 
-At most two cases run concurrently. This bounds API and machine pressure while
-keeping an eight-case run practical.
+Claude Code uses DeepSeek's Anthropic-compatible endpoint and a case-local
+`CLAUDE_CONFIG_DIR`. It launches with `--bare`, an explicit empty MCP config,
+slash skills disabled, Chrome disabled, and nonessential network traffic
+disabled. The selected DeepSeek model and effort are set in both the documented
+environment variables and CLI flags. The API token is resolved through Pi's
+credential helper before launch and scrubbed from Claude's tool subprocesses.
+The environment follows DeepSeek's
+[Claude Code integration guide](https://api-docs.deepseek.com/zh-cn/quick_start/agent_integrations/claude_code/),
+while isolation flags follow the current
+[Claude Code CLI reference](https://code.claude.com/docs/en/cli-usage).
 
-## Output
+All three harnesses run in YOLO mode. Pi's built-in tools execute directly;
+Codex uses `--dangerously-bypass-approvals-and-sandbox`, and Claude Code uses
+`--dangerously-skip-permissions`. An outer macOS Seatbelt profile remains active
+for the entire process tree and rejects every resolved filesystem write outside
+the case directory. Absolute paths such as `/tmp/three-test` therefore fail
+with `Operation not permitted`.
 
-Each command creates one timezone-qualified timestamp directory:
-
-```text
-runs/2026-08-13T16-30-00.123456+0800/
-├── prompt.md
-├── manifest.json
-├── pi-flash-high/
-│   ├── workspace/
-│   └── result/
-│       ├── events.jsonl
-│       ├── final.md
-│       ├── metadata.json
-│       ├── session/
-│       │   └── sessions/...
-│       └── stderr.log
-└── codex-ds-pro-max/
-    ├── workspace/
-    └── result/
-        └── ...
-```
-
-- `workspace/` is the preserved snapshot of files created by the model.
-- `events.jsonl` is the harness-native event stream.
-- `final.md` is the final assistant message.
-- `metadata.json` records the exact model, reasoning level, sanitized command,
-  CLI version, prompt hash, token usage when exposed, duration, exit status,
-  session ID, native resume arguments, and the canonical resume command.
-- `session/sessions/` preserves only the harness's resumable session artifacts;
-  credentials and the rest of the temporary CLI home are not copied.
-- `manifest.json` summarizes case order and completion state for the whole run.
-
-## Isolation contract
-
-For every case the runner:
-
-- creates a new, empty workspace under a random system temporary directory,
-  then copies its final snapshot to the case's `workspace/` result directory;
-- passes the prompt over stdin and does not place it in the workspace;
-- creates disposable `HOME`, `TMPDIR`, and `XDG_*` directories;
-- passes a small environment allowlist, excluding inherited API keys and other
-  credentials;
-- copies only the DeepSeek credential into pi's disposable home;
-- disables pi extensions, skills, prompt templates, themes, context files,
-  project trust, and startup network refreshes while saving a new isolated
-  session;
-- creates a minimal Codex home containing only the DeepSeek provider profile and
-  model catalog, while using `--ignore-user-config` and `--ignore-rules`;
-- copies the workspace and session artifacts back to the result directory,
-  terminates remaining child processes, and only then deletes both temporary
-  roots.
-
-`./benchmark resume` reconstructs another minimal temporary home from the saved
-session, opens the matching CLI in the preserved workspace, copies the updated
-session back on exit, and deletes the resume-time temporary home. The installed
-pi CLI's native form is `pi --session <file>`; Codex's native form is
-`codex resume <session-id>`. The wrapper is canonical because it restores the
-isolated authentication/profile state needed by both forms.
-
-The Codex flags follow the official [`codex exec` command
-reference](https://learn.chatgpt.com/docs/developer-commands#codex-exec).
-
-This is context/configuration isolation, not a hostile-code containment boundary.
-In particular, pi does not provide an OS-level filesystem sandbox. A prompt that
-explicitly asks the agent to inspect an absolute path could still reach data
-outside its temporary workspace; normal benchmark prompts receive no path or
-discovered resource from this repository.
-
-## Interpreting results
-
-The comparison intentionally includes each harness's built-in system prompt and
-tool implementation; those are part of the harness effect being measured. Keep
-the prompt, model endpoint, machine, and verification procedure fixed.
-
-One run is one sample. For conclusions about small differences, run the same
-prompt several times in separate timestamp directories and compare both task
-quality and token/time distributions. Two simultaneously running cases can still
-share backend-load or local-resource noise; use `--jobs 1` when measuring latency
-or cost rather than task quality.
+Reads, networking, and process execution remain available. This is a write
+boundary, not complete containment: the process can still read files available
+to the current macOS user and contact the network. The Seatbelt profile depends
+on macOS's deprecated `sandbox-exec`; the launcher fails closed when it is not
+available.
 
 ## Development checks
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 -m py_compile benchmark_runner.py
+zsh -n prepare.sh run-case run-sandboxed-case tests/test_scripts.sh
+./tests/test_scripts.sh
 ```
 
-The tests use fake harness executables and do not make model API calls.
+The tests use fake harness executables, verify case-local runtime/temp paths,
+and confirm that writes to `/private/tmp` are denied. They make no model API
+calls.
