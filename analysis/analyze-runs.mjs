@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { extractDshActionableFailures } from './dsh-error-audit-lib.mjs';
 
 const workspace = path.resolve(import.meta.dirname, '..');
 const runsRoot = path.join(workspace, 'runs');
@@ -211,18 +212,6 @@ function textItems(message) {
     .join('\n');
 }
 
-function dshToolFailureCategory(event) {
-  const text = (event.data?.message?.content ?? [])
-    .flatMap((item) => item.content ?? [])
-    .filter((item) => item.type === 'text')
-    .map((item) => item.text)
-    .join('\n');
-  if (/does not declare image input/i.test(text)) return 'model-capability mismatch';
-  if (/file changed since it was read/i.test(text)) return 'stale file version';
-  if (/look-around.*not supported|regex parse error/i.test(text)) return 'unsupported regex';
-  return 'other';
-}
-
 function summarizeDsh(events) {
   const userMessages = events.filter(
     (event) => event.type === 'user/message' && event.data?.source?.kind === 'user',
@@ -256,16 +245,16 @@ function summarizeDsh(events) {
   );
 
   const totalInputTokens = usage.uncachedInputTokens + usage.cachedInputTokens;
-  const failedToolResults = toolResults.filter((event) =>
-    (event.data?.message?.content ?? []).some(
-      (item) => item.type === 'tool-result' && item.isError === true,
-    ),
-  );
-  const toolFailureCount = failedToolResults.length;
+  const actionableFailures = extractDshActionableFailures(events);
+  const toolFailureCount = new Set(actionableFailures.map((failure) => failure.call_id)).size;
+  const declaredToolFailureCount = actionableFailures.filter(
+    (failure) => failure.is_error_flag,
+  ).length;
+  const unflaggedCommandFailureCount = actionableFailures.length - declaredToolFailureCount;
   const toolFailureCategories = Object.fromEntries(
-    [...new Set(failedToolResults.map(dshToolFailureCategory))].map((category) => [
+    [...new Set(actionableFailures.map((failure) => failure.error_class))].map((category) => [
       category,
-      failedToolResults.filter((event) => dshToolFailureCategory(event) === category).length,
+      actionableFailures.filter((failure) => failure.error_class === category).length,
     ]),
   );
   const manualContinueCount = userMessages.filter(
@@ -325,6 +314,8 @@ function summarizeDsh(events) {
     toolNames: toolCalls.map((event) => event.data?.name),
     toolFailureCount,
     toolFailureRate: percentage(toolFailureCount, toolCalls.length),
+    declaredToolFailureCount,
+    unflaggedCommandFailureCount,
     toolFailureCategories,
     oneShotCompleted: turnEnds[0]?.data?.reason?.kind === 'completed',
     completionMode: manualContinueCount ? `human-assisted (${manualContinueCount} continues)` : 'one-shot',

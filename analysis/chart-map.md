@@ -18,14 +18,15 @@
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
 
-## Observed tool-result failure rate
+## Observed actionable tool failure rate
 
-- Question: What share of tool calls returned an explicit error result?
+- Question: What share of tool calls produced an observable actionable failure?
 - Dataset: `harness_summary`
 - Fields: `harness`, `tool_failure_rate`, `tool_failures`, `tool_calls`
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
-- Caveat: This is an incidence metric, not a severity metric. DSH has a lower raw rate but uniquely exposes model-capability mismatches and fails to recover one-shot from stream timeouts.
+- DSH definition: harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.
+- Caveat: This is an incidence metric, not a severity metric. Pi and Codex use the failure signals observable in their respective schemas, so the cross-harness comparison is directional rather than strictly schema-identical.
 
 ## Input token cache composition
 
@@ -49,8 +50,9 @@
 
 - Question: Which cases lie on the practical speed-quality frontier?
 - Dataset: `cases`
-- Fields: `case`, `duration_min`, `quality_score`, `harness`, `completion_mode`, `critical_status`
+- Fields: `case_label`, `case`, `duration_min`, `quality_score`, `harness`, `completion_mode`, `critical_status`
 - Mark: Scatter with direct labels
+- Label format: `Model–Reasoning`; the report explicitly decodes `F/P = Flash/Pro` and `H/M = high/max` directly below the chart, while harness is encoded by color.
 - Sort: Not applicable
 - Source: Deterministic join of `analysis/analyze-runs.mjs` and `analysis/quality-assessment.md` by `case`
 

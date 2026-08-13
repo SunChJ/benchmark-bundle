@@ -27,6 +27,12 @@ const quality = {
   'pi-flash-high': [52, 'Critical', 'Vertical shell despite extensive self-tests.'],
 };
 
+const compactCaseLabel = (model, effort) => {
+  const modelCode = model.includes('Pro') ? 'P' : 'F';
+  const effortCode = effort === 'high' ? 'H' : 'M';
+  return `${modelCode}-${effortCode}`;
+};
+
 const metrics = JSON.parse(
   execFileSync(process.execPath, [path.join(analysisDir, 'analyze-runs.mjs')], {
     cwd: workspace,
@@ -42,6 +48,7 @@ const cases = metrics
       harness: row.harness,
       model_tier: row.model.includes('Pro') ? 'Pro' : 'Flash',
       effort: row.effort,
+      case_label: compactCaseLabel(row.model, row.effort),
       duration_s: Number((row.durationMs / 1000).toFixed(3)),
       duration_min: Number((row.durationMs / 60000).toFixed(4)),
       wall_duration_min: Number((row.wallDurationMs / 60000).toFixed(4)),
@@ -57,6 +64,8 @@ const cases = metrics
       tool_calls: row.toolCalls,
       tool_failures: row.toolFailureCount,
       tool_failure_rate: row.toolFailureRate,
+      declared_tool_failures: row.declaredToolFailureCount ?? null,
+      unflagged_command_failures: row.unflaggedCommandFailureCount ?? null,
       tool_error_summary: `${row.toolFailureCount}/${row.toolCalls}`,
       call_summary: `${row.modelCalls}/${row.toolCalls}`,
       one_shot_completed: row.oneShotCompleted,
@@ -120,6 +129,7 @@ const benchmarkSource = {
       'runs/20260813193424/*/.benchmark-runtime/pi/sessions/*.jsonl',
       'runs/20260813195515/*/.benchmark-runtime/{pi,codex}/sessions/**/*.jsonl',
       'runs/dsh/*/session.jsonl',
+      'analysis/dsh-error-audit-lib.mjs',
     ],
     filters: [
       'Canonical prompt SHA-256 bee2dabb86385df8686e5f48fa5e9fd70d33acbf9b833f9c487114c725b8a48e',
@@ -130,7 +140,7 @@ const benchmarkSource = {
       'Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.',
       'Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.',
       'One-shot completion: final artifact delivered without a manual continuation message.',
-      'Tool failure rate: explicit error tool results divided by tool calls; incidence does not measure severity or task recovery.',
+      'Tool failure rate: observable actionable failed tool calls divided by tool calls. DSH includes harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.',
       'Total input tokens: uncached input plus cache-read input. Codex input includes cached tokens, so uncached input = input - cached input.',
       'Cache hit rate: cached input tokens divided by total input tokens.',
       'Output tokens include reasoning tokens; reasoning output is the reported reasoning subset.',
@@ -222,12 +232,13 @@ const harnessSummarySource = {
     sql: harnessSummarySql,
     executed_at: generatedAt,
     description:
-      'Aggregates the 12 reviewed cases to harness-level one-shot completion, explicit tool-result failures, retries, timeouts, continuations, and permission changes.',
+      'Aggregates the 12 reviewed cases to harness-level one-shot completion, observable actionable tool failures, retries, timeouts, continuations, and permission changes.',
     tables_used: ['analysis/harness-summary.sql', 'analysis/report-source.sql'],
     filters: ['Four cases per harness', 'Twelve total cases; no sampling'],
     metric_definitions: [
       'One-shot rate = cases completed without manual continuation divided by cases.',
-      'Tool failure rate = explicit error tool results divided by tool calls.',
+      'Tool failure rate = observable actionable failed tool calls divided by tool calls. DSH includes 9 harness-declared failures and 14 non-zero command exits or runtime exceptions that were not flagged as errors.',
+      'Pi and Codex use the failure signals observable in their available schemas, so cross-harness failure-rate comparisons are directional rather than strictly schema-identical.',
       'LLM retries and stream timeout occurrences are observable only in DSH session logs under the available schemas.',
     ],
   },
@@ -299,24 +310,24 @@ artifact.manifest.charts = [
   },
   {
     id: 'tool_failure_chart',
-    title: 'Observed tool-result failure rate',
+    title: 'Observed actionable tool failure rate',
     subtitle:
-      'DSH has the lowest raw incidence, proving that failure severity and recovery—not error count alone—drive its reliability gap.',
+      'DSH is 23/178 (12.9%): 9 declared failures plus 14 command/runtime failures hidden in successful envelopes.',
     showDescription: true,
     type: 'horizontalBar',
     dataset: 'harness_summary',
     sourceId: 'harness_summary_query',
     encodings: {
       x: { field: 'harness', type: 'nominal', label: 'Harness' },
-      y: { field: 'tool_failure_rate', type: 'quantitative', label: 'Explicit tool error rate' },
+      y: { field: 'tool_failure_rate', type: 'quantitative', label: 'Tool failure rate' },
       tooltip: [
-        { field: 'tool_failures', type: 'quantitative', label: 'Tool failures', format: 'number' },
+        { field: 'tool_failures', type: 'quantitative', label: 'Actionable failures', format: 'number' },
         { field: 'tool_calls', type: 'quantitative', label: 'Tool calls', format: 'number' },
         { field: 'llm_retries', type: 'quantitative', label: 'LLM retries', format: 'number' },
         { field: 'stream_timeouts', type: 'quantitative', label: 'Stream timeouts', format: 'number' },
       ],
     },
-    yAxisTitle: 'Explicit tool error rate',
+    yAxisTitle: 'Tool failure rate',
     valueFormat: 'percent',
     maxRows: 3,
     layout: 'full',
@@ -379,6 +390,7 @@ artifact.manifest.charts = [
       x: { field: 'duration_min', type: 'quantitative', label: 'Adjusted elapsed time', unit: 'min' },
       y: { field: 'quality_score', type: 'quantitative', label: 'Quality score', unit: '/100' },
       color: { field: 'harness', type: 'nominal', label: 'Harness' },
+      label: { field: 'case_label', type: 'text', label: 'CLI / model / effort' },
       tooltip: [
         { field: 'case', type: 'nominal', label: 'Case' },
         { field: 'completion_mode', type: 'nominal', label: 'Completion mode' },
@@ -411,7 +423,7 @@ artifact.manifest.tables = [
       { field: 'completion_mode', label: 'Completion', type: 'text' },
       { field: 'input_cache_summary', label: 'Input/cache', type: 'text', align: 'right' },
       { field: 'call_summary', label: 'Model/tool calls', type: 'text', align: 'right' },
-      { field: 'tool_error_summary', label: 'Tool err/calls', type: 'text', align: 'right' },
+      { field: 'tool_error_summary', label: 'Tool failures/calls', type: 'text', align: 'right' },
       { field: 'retry_timeout_summary', label: 'Retry/timeout', type: 'text', align: 'right' },
     ],
   },
@@ -441,7 +453,7 @@ artifact.manifest.blocks = [
     type: 'markdown',
     sourceId: 'joined_results',
     body:
-      '## Technical Summary\n\n同一 canonical prompt、12 个单次样本下，**DSH 的输出质量并不差，但执行可靠性明显落后**：最佳 DSH 输出为 Flash/max（88/100），接近 Pi Flash/max（89）；然而 DSH 4/4 都需要两次人工“继续”，Pi/Codex 8/8 均 one-shot。扣除可识别的断线与重试等待后，DSH 仍需 40.3–72.1 分钟，Pi 为 14.1–34.6 分钟，Codex 为 10.3–31.7 分钟。由于模型档位一致，这组差异主要指向 harness 的任务生命周期、工具契约与恢复策略。',
+      '## Technical Summary\n\n同一 canonical prompt、12 个单次样本下，**DSH 的输出质量并不差，但执行可靠性明显落后**：最佳 DSH 输出为 Flash/max（88/100），接近 Pi Flash/max（89）；然而 DSH 4/4 都需要两次人工“继续”，Pi/Codex 8/8 均 one-shot。DSH 整体 tool failure rate 为 23/178（12.9%），其中 14 个 command/runtime failure 没有被 tool-result 标记为错误。扣除可识别的断线与重试等待后，DSH 仍需 40.3–72.1 分钟。由于模型档位一致，这组差异主要指向 harness 的任务生命周期、失败结果标准化与恢复策略。',
   },
   {
     id: 'duration_section',
@@ -456,7 +468,7 @@ artifact.manifest.blocks = [
     type: 'markdown',
     sourceId: 'benchmark_analysis',
     body:
-      '## Harness 可靠性：问题不在“报错次数多”，而在错误是否终止任务\n\nDSH 原始工具错误率只有 9/178（5.1%），低于 Pi 的 13/94（13.8%）和 Codex 的 17/93（18.3%）；但 DSH one-shot 为 0/4，另外两者为 8/8。最强反例是 DSH Pro/high：18 次工具调用 **0 次显式工具错误**，仍因流超时与续跑状态机无法一次完成。真正的 harness 差距是错误分类、自动恢复和 turn 生命周期，而不是单一错误率。',
+      '## Harness 可靠性：DSH 整体 tool failure rate 是 12.9%\n\nDSH 四组 session 共 178 次工具调用，识别出 **23 个可操作失败（12.9%）**：9 个 harness-declared tool failures，以及 14 个藏在成功 envelope 里的 non-zero command exit 或 runtime exception。Pi 为 13/94（13.8%），Codex 为 17/93（18.3%）；由于三种日志 schema 的失败信号不完全一致，横向数值只作方向性参考。DSH Pro/high 也从“0 个显式错误”修正为 2/18（11.1%）整体失败，且仍需两次人工“继续”。核心差距是失败结果标准化、自动恢复和 turn 生命周期。',
   },
   { id: 'one_shot_visual', type: 'chart', chartId: 'one_shot_chart', layout: 'full' },
   { id: 'tool_failure_visual', type: 'chart', chartId: 'tool_failure_chart', layout: 'full' },
@@ -492,6 +504,12 @@ artifact.manifest.blocks = [
   },
   { id: 'frontier_visual', type: 'chart', chartId: 'frontier_chart', layout: 'full' },
   {
+    id: 'frontier_label_legend',
+    type: 'markdown',
+    body:
+      '**点位说明**：`F/P` = Model（DeepSeek V4 Flash / Pro）；`H/M` = Reasoning effort（high / max）。CLI harness 由颜色区分；完整 case name 保留在点位 tooltip 与下方 Case 级证据表中。',
+  },
+  {
     id: 'detail_section',
     type: 'markdown',
     sourceId: 'joined_results',
@@ -509,7 +527,7 @@ artifact.manifest.blocks = [
     id: 'limitations',
     type: 'markdown',
     body:
-      '## Limitations and robustness\n\n每格 n=1，不能估计方差或显著性。DSH 部分 turn 缺少 end 事件，adjusted time 只能扣除可明确识别的等待，仍可能包含残余等待或重叠执行。Pi/Codex 日志没有 DSH 同口径的 LLM retry 事件，因此 retry 数只用于 DSH 内部诊断。工具错误率按显式 error result 计数；它衡量发生率，不衡量严重度。质量含人工视觉判断，DSH 主模型不具备图像输入能力。',
+      '## Limitations and robustness\n\n每格 n=1，不能估计方差或显著性。DSH 部分 turn 缺少 end 事件，adjusted time 只能扣除可明确识别的等待，仍可能包含残余等待或重叠执行。DSH 整体 tool failure rate 包含 harness-declared failure、non-zero command exit 与 runtime exception；Pi/Codex 按各自可观察 schema 识别，因此跨 harness 失败率并非严格同构。该指标衡量发生率，不衡量严重度或恢复效果。质量含人工视觉判断，DSH 主模型不具备图像输入能力。',
   },
   {
     id: 'recommendations',

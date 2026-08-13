@@ -1,0 +1,1080 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "DSH 修改意见：Preview CLI 优化建议",
+    "description": "A friendly, evidence-backed improvement plan for the DSH preview CLI, benchmarked against Pi and Codex using the same DeepSeek model tiers.",
+    "generatedAt": "2026-08-13T16:05:26Z",
+    "sources": [
+      {
+        "id": "benchmark_analysis",
+        "label": "Normalized benchmark session analysis",
+        "path": "analysis/analyze-runs.mjs",
+        "query": {
+          "engine": "node",
+          "id": "analyze-runs-v2",
+          "language": "javascript",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Parses Pi, Codex, and DSH JSONL sessions; normalizes token/cache semantics, explicit waits, completion mode, retries, and tool outcomes; joins each session to its generated HTML.",
+          "tables_used": [
+            "runs/20260813193424/*/.benchmark-runtime/pi/sessions/*.jsonl",
+            "runs/20260813195515/*/.benchmark-runtime/{pi,codex}/sessions/**/*.jsonl",
+            "runs/dsh/*/session.jsonl"
+          ],
+          "filters": [
+            "Canonical prompt SHA-256 bee2dabb86385df8686e5f48fa5e9fd70d33acbf9b833f9c487114c725b8a48e",
+            "Twelve harness × model tier × effort cases; no sampling",
+            "One final HTML output per case"
+          ],
+          "metric_definitions": [
+            "Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.",
+            "Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.",
+            "One-shot completion: final artifact delivered without a manual continuation message.",
+            "Tool failure rate: explicit error tool results divided by tool calls; incidence does not measure severity or task recovery.",
+            "Total input tokens: uncached input plus cache-read input. Codex input includes cached tokens, so uncached input = input - cached input.",
+            "Cache hit rate: cached input tokens divided by total input tokens.",
+            "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset."
+          ]
+        }
+      },
+      {
+        "id": "quality_review",
+        "label": "Browser and implementation quality assessment",
+        "path": "analysis/quality-assessment.md",
+        "query": {
+          "engine": "manual-reviewed",
+          "id": "quality-rubric-v2",
+          "language": "markdown",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Scores all 12 outputs after 1280×720 browser QA of assembled/exploded states, console inspection, selected round trips, and source review.",
+          "tables_used": [
+            "analysis/quality-assessment.md",
+            "runs/20260813193424/*/*.html",
+            "runs/20260813195515/*/*.html",
+            "runs/dsh/*/*.html"
+          ],
+          "filters": [
+            "All 12 outputs reviewed",
+            "1280×720 viewport",
+            "Exploded state triggered with Space after page load",
+            "Round trip checked for leading Pi/Codex candidates and DSH Flash/max and Pro/high"
+          ],
+          "metric_definitions": [
+            "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+            "Critical status overrides numeric ranking when a runtime or semantic geometry defect prevents faithful task completion."
+          ]
+        }
+      },
+      {
+        "id": "report_query",
+        "label": "Reviewed case-level report query",
+        "path": "analysis/report-source.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "case-evidence-v2",
+          "language": "sql",
+          "sql": "-- Materialized, reviewed case-level evidence for the report artifact.\n-- Source metrics come from analyze-runs.mjs; quality fields come from quality-assessment.md.\nWITH cases(\n  case_name,\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\n) AS (\n  VALUES\n    ('codex-ds-flash-high', 'Codex', 'Flash', 'high', 1294.126, 21.5688, 21.5688, 0.0000, 2572715, 2552064, 20651, 0.9919730712496332, 32311, 12142, 20, 25, 6, 0.2400000000000000, 1, 'one-shot', 0, 0, 0, 0, 94, 'Pass', 'Best overall; strong exploded view, slight lower-label crowding.', 'runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html'),\n    ('pi-pro-high', 'Pi', 'Pro', 'high', 1049.822, 17.4970, 17.4970, 0.0000, 673469, 657408, 16061, 0.9761518347540866, 90884, 79122, 8, 7, 1, 0.1428571428571429, 1, 'one-shot', 0, 0, 0, 0, 91, 'Pass', 'Best composition; minor right/bottom label crowding.', 'runs/20260813195515/pi-pro-high/floppy-exploded.html'),\n    ('pi-flash-max', 'Pi', 'Flash', 'max', 845.870, 14.0978, 14.0978, 0.0000, 2624424, 2604032, 20392, 0.9922299140687633, 93837, 69119, 29, 28, 2, 0.0714285714285714, 1, 'one-shot', 0, 0, 0, 0, 89, 'Pass', 'Correct geometry; exploded top/bottom framing clips.', 'runs/20260813193424/pi-flash-max/floppy-exploded-view.html'),\n    ('ds-harness-flash-max', 'DSH', 'Flash', 'max', 2736.075, 45.6013, 66.8914, 21.2901, 3714005, 3658624, 55381, 0.9850886038117881, 118683, 98023, 31, 34, 2, 0.0588235294117647, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 88, 'Pass', 'Best DSH; round trip passes, minor viewport clipping.', 'runs/dsh/ds-harness-flash-max/floppy-blueprint.html'),\n    ('ds-harness-pro-high', 'DSH', 'Pro', 'high', 2419.179, 40.3197, 61.6077, 21.2881, 1637168, 1601024, 36144, 0.9779228521446791, 111615, 95279, 15, 18, 0, 0.0000000000000000, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 87, 'Pass', 'Clean DSH round trip; central labels overlap.', 'runs/dsh/ds-harness-pro-high/floppy-exploded-blueprint.html'),\n    ('codex-ds-pro-high', 'Codex', 'Pro', 'high', 619.162, 10.3194, 10.3194, 0.0000, 756309, 737920, 18389, 0.9756858638466552, 53076, 32482, 15, 14, 2, 0.1428571428571429, 1, 'one-shot', 0, 0, 0, 0, 85, 'Pass', 'Fastest usable; correct geometry, minor top clipping.', 'runs/20260813195515/codex-ds-pro-high/index.html'),\n    ('ds-harness-flash-high', 'DSH', 'Flash', 'high', 2746.048, 45.7675, 78.0797, 32.3123, 5113143, 5081856, 31287, 0.9938810629782895, 111130, 85718, 49, 49, 4, 0.0816326530612245, 0, 'human-assisted (2 continues)', 2, 6, 4, 0, 79, 'Pass', 'Assembled shutter detached; exploded labels overlap.', 'runs/dsh/ds-harness-flash-high/floppy-exploded-blueprint.html'),\n    ('codex-ds-flash-max', 'Codex', 'Flash', 'max', 995.252, 16.5875, 16.5875, 0.0000, 1520846, 1507456, 13390, 0.9911956897674058, 70660, 46039, 23, 22, 7, 0.3181818181818182, 1, 'one-shot', 0, 0, 0, 0, 78, 'Pass', 'Complete; exploded framing over-zoomed and mislabelled.', 'runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html'),\n    ('ds-harness-pro-max', 'DSH', 'Pro', 'max', 4328.985, 72.1497, 104.6595, 32.5097, 11026683, 10995712, 30971, 0.9971912677638416, 175286, 127599, 75, 77, 3, 0.0389610389610390, 0, 'human-assisted (2 continues)', 2, 6, 5, 1, 72, 'Pass', 'Undersized scene; labels and vertical title clipped.', 'runs/dsh/ds-harness-pro-max/floppy-blueprint.html'),\n    ('pi-pro-max', 'Pi', 'Pro', 'max', 2076.601, 34.6100, 34.6100, 0.0000, 2912213, 2882176, 30037, 0.9896858505885386, 161557, 133661, 20, 19, 4, 0.2105263157894737, 1, 'one-shot', 0, 0, 0, 0, 64, 'Critical', 'Label fade-in throws; labels never render.', 'runs/20260813195515/pi-pro-max/floppy-blueprint.html'),\n    ('codex-ds-pro-max', 'Codex', 'Pro', 'max', 1902.947, 31.7158, 31.7158, 0.0000, 3529832, 3419008, 110824, 0.9686036049307729, 135505, 108138, 23, 32, 2, 0.0625000000000000, 1, 'one-shot', 0, 0, 0, 0, 53, 'Critical', 'Vertical shell caused by unrotated extrusions.', 'runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html'),\n    ('pi-flash-high', 'Pi', 'Flash', 'high', 1247.667, 20.7945, 20.7945, 0.0000, 3801287, 3781504, 19783, 0.9947957099792780, 102333, 79451, 41, 40, 6, 0.1500000000000000, 1, 'one-shot', 0, 0, 0, 0, 52, 'Critical', 'Vertical shell despite extensive self-tests.', 'runs/20260813193424/pi-flash-high/index.html')\n)\nSELECT\n  case_name AS \"case\",\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\nFROM cases;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Returns the 12 reviewed case-level rows used by report charts and the detail table.",
+          "tables_used": [
+            "analysis/report-source.sql",
+            "analysis/analyze-runs.mjs",
+            "analysis/quality-assessment.md"
+          ],
+          "filters": [
+            "Canonical prompt SHA-256 bee2dabb86385df8686e5f48fa5e9fd70d33acbf9b833f9c487114c725b8a48e",
+            "Twelve completed artifacts; no sampling",
+            "Deterministic join on exact case identifier"
+          ],
+          "metric_definitions": [
+            "Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.",
+            "Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.",
+            "One-shot completion: final artifact delivered without a manual continuation message.",
+            "Tool failure rate: explicit error tool results divided by tool calls; incidence does not measure severity or task recovery.",
+            "Total input tokens: uncached input plus cache-read input. Codex input includes cached tokens, so uncached input = input - cached input.",
+            "Cache hit rate: cached input tokens divided by total input tokens.",
+            "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset.",
+            "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+            "Critical status overrides numeric ranking when a runtime or semantic geometry defect prevents faithful task completion."
+          ]
+        }
+      },
+      {
+        "id": "harness_summary_query",
+        "label": "Harness-level reliability query",
+        "path": "analysis/harness-summary.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "harness-reliability-v1",
+          "language": "sql",
+          "sql": "-- Harness-level reliability summary derived from the 12 reviewed case rows.\nWITH harness_summary(\n  harness,\n  cases,\n  one_shot_completed,\n  one_shot_rate,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  llm_retries,\n  stream_timeouts,\n  manual_continues,\n  permission_changes\n) AS (\n  VALUES\n    ('Codex', 4, 4, 1.0, 93, 17, 0.1827956989247312, 0, 0, 0, 0),\n    ('Pi', 4, 4, 1.0, 94, 13, 0.1382978723404255, 0, 0, 0, 0),\n    ('DSH', 4, 0, 0.0, 178, 9, 0.0505617977528090, 15, 20, 8, 3)\n)\nSELECT * FROM harness_summary;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Aggregates the 12 reviewed cases to harness-level one-shot completion, explicit tool-result failures, retries, timeouts, continuations, and permission changes.",
+          "tables_used": [
+            "analysis/harness-summary.sql",
+            "analysis/report-source.sql"
+          ],
+          "filters": [
+            "Four cases per harness",
+            "Twelve total cases; no sampling"
+          ],
+          "metric_definitions": [
+            "One-shot rate = cases completed without manual continuation divided by cases.",
+            "Tool failure rate = explicit error tool results divided by tool calls.",
+            "LLM retries and stream timeout occurrences are observable only in DSH session logs under the available schemas."
+          ]
+        }
+      },
+      {
+        "id": "dsh_error_audit",
+        "label": "DSH session error audit",
+        "path": "analysis/audit-dsh-errors.mjs",
+        "query": {
+          "engine": "node",
+          "id": "dsh-error-audit-v1",
+          "language": "javascript",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Audits every DSH tool-result envelope and separates harness-declared failures from command/runtime failures embedded in successful results.",
+          "tables_used": [
+            "analysis/audit-dsh-errors.mjs",
+            "runs/dsh/*/session.jsonl"
+          ],
+          "filters": [
+            "Four DSH benchmark sessions; no sampling",
+            "Declared isError results, non-zero exit markers, and JavaScript runtime exceptions",
+            "GPU performance logs and other successful-exit stderr noise excluded"
+          ],
+          "metric_definitions": [
+            "Harness-declared tool failure: tool-result item has isError=true.",
+            "Command/runtime failure: non-zero exit or runtime exception is present while the tool-result is not marked as an error.",
+            "Actionable failure total = harness-declared tool failures + command/runtime failures."
+          ]
+        }
+      },
+      {
+        "id": "dsh_lifecycle_query",
+        "label": "DSH lifecycle event totals",
+        "path": "analysis/dsh-lifecycle-events.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "dsh-lifecycle-events-v1",
+          "language": "sql",
+          "sql": "-- DSH lifecycle event totals from the four benchmark session logs.\nWITH lifecycle_events(event, count, interpretation) AS (\n  VALUES\n    ('Stream timeout occurrence', 20, 'Turn continuity signal'),\n    ('LLM retry', 15, 'Automatic retry attempt'),\n    ('Manual continuation', 8, 'Unattended completion failure'),\n    ('Permission mode change', 3, 'Preflight contract gap')\n)\nSELECT * FROM lifecycle_events;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Materializes stream timeout, retry, continuation, and permission-transition totals across four DSH sessions.",
+          "tables_used": [
+            "analysis/dsh-lifecycle-events.sql",
+            "analysis/analyze-runs.mjs",
+            "runs/dsh/*/session.jsonl"
+          ],
+          "filters": [
+            "Four DSH benchmark sessions; no sampling"
+          ],
+          "metric_definitions": [
+            "Stream timeout occurrences include retryable timeout events and terminal timeout turn endings.",
+            "Manual continuations count user messages whose trimmed content is exactly 继续.",
+            "Permission mode changes count transitions between distinct recorded sandbox modes."
+          ]
+        }
+      },
+      {
+        "id": "dsh_error_class_query",
+        "label": "Reviewed DSH tool-error taxonomy",
+        "path": "analysis/dsh-error-classes.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "dsh-error-classes-v1",
+          "language": "sql",
+          "sql": "-- Reviewed actionable DSH execution failures from the four benchmark session logs.\nWITH error_classes(\n  error_class,\n  incidents,\n  affected_cases,\n  failure_surface,\n  recommended_handler\n) AS (\n  VALUES\n    ('Non-zero command exit', 10, 4, 'Command/runtime', 'Return a typed error envelope with exit code and stderr'),\n    ('Stale file revision', 5, 3, 'Harness-declared', 'Re-read and replay once with a revision token'),\n    ('Runtime exception without failure flag', 4, 1, 'Command/runtime', 'Detect process failure and set the tool error flag'),\n    ('Image capability mismatch', 3, 3, 'Harness-declared', 'Hide read_image and route to render_validate'),\n    ('Unsupported regex feature', 1, 1, 'Harness-declared', 'Return an executable compatibility hint')\n)\nSELECT * FROM error_classes;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Materializes 23 observable actionable failures by class, affected cases, and failure surface.",
+          "tables_used": [
+            "analysis/dsh-error-classes.sql",
+            "analysis/audit-dsh-errors.mjs",
+            "runs/dsh/*/session.jsonl"
+          ],
+          "filters": [
+            "Four DSH benchmark sessions; no sampling",
+            "Harness-declared errors plus non-zero command exits and runtime exceptions",
+            "Benign GPU/Chrome stderr noise with successful exits excluded"
+          ],
+          "metric_definitions": [
+            "Actionable failure count includes harness-declared tool failures, non-zero command exits, and runtime exceptions returned without a failure flag.",
+            "Stream timeouts and LLM retries are tracked separately as lifecycle events.",
+            "Affected cases count distinct DSH benchmark cases containing the error class."
+          ]
+        }
+      },
+      {
+        "id": "dsh_recommendation_review",
+        "label": "DSH preview CLI recommendation review",
+        "path": "analysis/dsh-preview-cli-recommendations.md",
+        "query": {
+          "engine": "manual-reviewed",
+          "id": "dsh-preview-cli-recommendations-v1",
+          "language": "markdown",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Evidence-backed preview CLI recommendations, prioritized roadmap, and proposed acceptance gates.",
+          "tables_used": [
+            "analysis/dsh-preview-cli-recommendations.md",
+            "analysis/analyze-runs.mjs",
+            "analysis/quality-assessment.md"
+          ],
+          "filters": [
+            "Recommendations limited to observed harness behavior and proposed regression tests",
+            "Product targets are labeled as proposed, not observed measurements"
+          ],
+          "metric_definitions": [
+            "Preview exit targets are proposed acceptance thresholds and are not measured results.",
+            "Visual validation means an external harness oracle returns structured text or JSON; it does not add image input to the DeepSeek model."
+          ]
+        }
+      },
+      {
+        "id": "dsh_recommendation_query",
+        "label": "Prioritized DSH recommendation plan",
+        "path": "analysis/dsh-recommendation-plan.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "dsh-recommendation-plan-v1",
+          "language": "sql",
+          "sql": "-- Prioritized DSH preview CLI recommendation plan.\nWITH recommendations(priority, workstream, proposed_change, exit_signal) AS (\n  VALUES\n    ('P0', 'Turn continuity', 'Progress-aware watchdog, same-turn resume, idempotent steps, atomic completion marker.', 'Synthetic stream interruptions recover without user continuation.'),\n    ('P0', 'Capability negotiation', 'Resolve model capabilities before the turn and hide incompatible tools.', 'Zero permanent capability-mismatch tool calls.'),\n    ('P0', 'Visual validation', 'Add a text/JSON render_validate oracle for console, DOM, viewport, state and image statistics.', 'Pure-text models verify visual tasks without direct image input.'),\n    ('P1', 'Typed tool recovery', 'Normalize non-zero exits/runtime exceptions into typed failures; make stale edits revision-aware.', 'No actionable subprocess failure is returned as success.'),\n    ('P1', 'Headless preflight', 'Resolve sandbox, approval, paths, browser and tool support before the first model call.', 'No mid-run permission changes in non-interactive runs.'),\n    ('P1', 'Observability', 'Emit a stable JSON summary for versions, timings, tokens/cache, retries, errors and exit reason.', 'Every benchmark run produces a schema-valid summary.'),\n    ('P2', 'Reproducibility and UX', 'Pin resolved CLI integrity, add dsh resume, and explain automatic recovery states.', 'A run can be reproduced and resumed from its manifest.')\n)\nSELECT * FROM recommendations;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Materializes the prioritized roadmap and preview exit signal for each workstream.",
+          "tables_used": [
+            "analysis/dsh-recommendation-plan.sql",
+            "analysis/dsh-preview-cli-recommendations.md"
+          ],
+          "filters": [
+            "Roadmap items backed by observed benchmark evidence or labeled product targets"
+          ],
+          "metric_definitions": [
+            "Priority is a product recommendation: P0 blocks unattended reliability, P1 hardens operations, and P2 improves reproducibility and UX."
+          ]
+        }
+      },
+      {
+        "id": "dsh_acceptance_query",
+        "label": "Proposed DSH preview exit gates",
+        "path": "analysis/dsh-preview-exit-gates.sql",
+        "query": {
+          "engine": "sqlite",
+          "id": "dsh-preview-exit-gates-v1",
+          "language": "sql",
+          "sql": "-- Proposed acceptance gates for moving DSH beyond preview reliability.\nWITH acceptance_gates(gate, observed, preview_exit_target, measurement) AS (\n  VALUES\n    ('One-shot completion', '0/4 DSH cases', '4/4 regression; then >=95% across n>=20', 'Completed artifact without manual continuation'),\n    ('Manual continuation', '8 messages', '0 in unattended mode', 'Continuation messages after canonical prompt'),\n    ('Capability mismatch', '3 read_image failures', '0 after preflight', 'Permanent mismatch calls by class'),\n    ('Recovery fixtures', 'Not measured', '100% within bounded retry budget', 'Injected stream and stale-edit scenarios'),\n    ('Outcome normalization', '14 failures not flagged as tool errors', '0 unflagged actionable failures', 'Non-zero exits and runtime exceptions vs tool status'),\n    ('Permission stability', '3 mid-run changes', '0 in headless mode', 'Permission-mode transitions per run'),\n    ('Telemetry completeness', 'No stable summary contract', '100% schema-valid summaries', 'JSON schema validation and explicit exit reason')\n)\nSELECT * FROM acceptance_gates;\n",
+          "executed_at": "2026-08-13T16:05:26Z",
+          "description": "Materializes observed baselines, proposed targets, and measurement definitions.",
+          "tables_used": [
+            "analysis/dsh-preview-exit-gates.sql",
+            "analysis/dsh-preview-cli-recommendations.md"
+          ],
+          "filters": [
+            "Targets are explicitly proposed and are not presented as current measurements"
+          ],
+          "metric_definitions": [
+            "Preview exit targets are product acceptance recommendations, not statistical estimates from the n=1-per-cell benchmark."
+          ]
+        }
+      }
+    ],
+    "cards": [],
+    "charts": [
+      {
+        "id": "one_shot_chart",
+        "title": "One-shot completion rate by harness",
+        "subtitle": "Four cases per harness; same canonical prompt and matching DeepSeek model tiers/effort.",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "harness_summary",
+        "sourceId": "harness_summary_query",
+        "encodings": {
+          "x": {
+            "field": "harness",
+            "type": "nominal",
+            "label": "Harness"
+          },
+          "y": {
+            "field": "one_shot_rate",
+            "type": "quantitative",
+            "label": "One-shot completion rate"
+          },
+          "tooltip": [
+            {
+              "field": "one_shot_completed",
+              "type": "quantitative",
+              "label": "One-shot cases",
+              "format": "number"
+            },
+            {
+              "field": "cases",
+              "type": "quantitative",
+              "label": "Cases",
+              "format": "number"
+            },
+            {
+              "field": "manual_continues",
+              "type": "quantitative",
+              "label": "Manual continuations",
+              "format": "number"
+            }
+          ]
+        },
+        "yAxisTitle": "One-shot completion rate",
+        "valueFormat": "percent",
+        "maxRows": 3,
+        "layout": "full"
+      },
+      {
+        "id": "lifecycle_event_chart",
+        "title": "DSH lifecycle events",
+        "subtitle": "Observed totals across four DSH sessions; counts are events, not rates.",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "lifecycle_events",
+        "sourceId": "dsh_lifecycle_query",
+        "encodings": {
+          "x": {
+            "field": "event",
+            "type": "nominal",
+            "label": "Event"
+          },
+          "y": {
+            "field": "count",
+            "type": "quantitative",
+            "label": "Observed count"
+          },
+          "tooltip": [
+            {
+              "field": "interpretation",
+              "type": "nominal",
+              "label": "Interpretation"
+            },
+            {
+              "field": "count",
+              "type": "quantitative",
+              "label": "Count",
+              "format": "number"
+            }
+          ]
+        },
+        "yAxisTitle": "Observed event count",
+        "valueFormat": "number",
+        "maxRows": 4,
+        "layout": "full"
+      },
+      {
+        "id": "dsh_time_chart",
+        "title": "DSH adjusted completion time",
+        "subtitle": "Minutes after removing explicit stream-idle, retry-backoff, and disconnect waits; every case still required two continuations.",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "dsh_cases",
+        "sourceId": "report_query",
+        "encodings": {
+          "x": {
+            "field": "case_label",
+            "type": "nominal",
+            "label": "Model tier / effort"
+          },
+          "y": {
+            "field": "duration_min",
+            "type": "quantitative",
+            "label": "Adjusted completion time",
+            "unit": "min"
+          },
+          "tooltip": [
+            {
+              "field": "duration_min",
+              "type": "quantitative",
+              "label": "Adjusted minutes",
+              "format": "number"
+            },
+            {
+              "field": "wall_duration_min",
+              "type": "quantitative",
+              "label": "Wall minutes",
+              "format": "number"
+            },
+            {
+              "field": "quality_score",
+              "type": "quantitative",
+              "label": "Quality score",
+              "format": "number"
+            }
+          ]
+        },
+        "yAxisTitle": "Adjusted minutes",
+        "valueFormat": "number",
+        "maxRows": 4,
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "dsh_case_evidence",
+        "title": "DSH case evidence",
+        "subtitle": "Adjusted/wall time and retry/timeout pairs are shown as compact exact values.",
+        "showDescription": true,
+        "dataset": "dsh_cases",
+        "sourceId": "report_query",
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "case_label",
+            "label": "Tier / effort",
+            "type": "text"
+          },
+          {
+            "field": "quality_status",
+            "label": "Quality",
+            "type": "text"
+          },
+          {
+            "field": "duration_pair",
+            "label": "Adjusted / wall",
+            "type": "text"
+          },
+          {
+            "field": "retry_timeout_pair",
+            "label": "Retries / timeouts",
+            "type": "text"
+          },
+          {
+            "field": "failure_summary",
+            "label": "Failures (declared + command)",
+            "type": "text"
+          },
+          {
+            "field": "manual_continues",
+            "label": "Continues",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          }
+        ]
+      },
+      {
+        "id": "tool_error_classes",
+        "title": "Observable DSH execution failures by class",
+        "subtitle": "23 actionable failures: 9 harness-declared plus 14 command/runtime failures not flagged as tool errors.",
+        "showDescription": true,
+        "dataset": "error_classes",
+        "sourceId": "dsh_error_class_query",
+        "density": "compact",
+        "layout": "full",
+        "defaultSort": {
+          "field": "incidents",
+          "direction": "desc"
+        },
+        "columns": [
+          {
+            "field": "error_class",
+            "label": "Error class",
+            "type": "text"
+          },
+          {
+            "field": "incidents",
+            "label": "Incidents",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "affected_cases",
+            "label": "Cases",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "failure_surface",
+            "label": "Failure surface",
+            "type": "text"
+          },
+          {
+            "field": "recommended_handler",
+            "label": "Harness handler",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "recommendation_plan",
+        "title": "Prioritized recommendation plan",
+        "subtitle": "P0 protects unattended completion; P1 hardens contracts and operations; P2 improves reproducibility and UX.",
+        "showDescription": true,
+        "dataset": "recommendations",
+        "sourceId": "dsh_recommendation_query",
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "priority",
+            "label": "Priority",
+            "type": "text"
+          },
+          {
+            "field": "workstream",
+            "label": "Workstream",
+            "type": "text"
+          },
+          {
+            "field": "proposed_change",
+            "label": "Proposed change",
+            "type": "text"
+          },
+          {
+            "field": "exit_signal",
+            "label": "Exit signal",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "acceptance_gates",
+        "title": "Proposed preview exit gates",
+        "subtitle": "Targets are recommendations, not results measured by the current benchmark.",
+        "showDescription": true,
+        "dataset": "acceptance_gates",
+        "sourceId": "dsh_acceptance_query",
+        "density": "compact",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "gate",
+            "label": "Gate",
+            "type": "text"
+          },
+          {
+            "field": "observed",
+            "label": "Observed",
+            "type": "text"
+          },
+          {
+            "field": "preview_exit_target",
+            "label": "Proposed exit target",
+            "type": "text"
+          },
+          {
+            "field": "measurement",
+            "label": "Measurement",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# DSH 修改意见：Preview CLI 优化建议"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## Technical Summary\n\nDSH 已经能产出有竞争力的结果：4 个实现全部通过质量 rubric，最高 88/100；但它尚未形成可靠的无人值守执行闭环。相同 DeepSeek 模型档位下，DSH 0/4 one-shot，Pi/Codex 合计 8/8。重新审计四份 DSH session 后，共识别出 **23 个可操作失败**：9 个 harness-declared tool failures，以及 14 个被包装在“成功” tool-result 里的 command/runtime failures。最高优先级应是 turn 生命周期、失败结果标准化、自动恢复与能力协商，而不是把问题简单归因于模型。"
+      },
+      {
+        "id": "product_posture",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## 建议的 Preview CLI 定位\n\n建议把 DSH 描述为“生成质量已具备竞争力、执行可靠性仍在 hardening 的 Preview CLI”。这既尊重当前成果，也把改进目标落到 harness 可控制的边界：恢复、工具契约、权限预检与可观测性。"
+      },
+      {
+        "id": "one_shot_finding",
+        "type": "markdown",
+        "sourceId": "harness_summary_query",
+        "body": "## 首要缺口：任务完成语义，而非错误发生率\n\nPi 与 Codex 的 8 个 case 都能在原始 prompt 后自动完成；DSH 4 个 case 均需要两次人工继续。该对比控制了模型档位和 effort，最合理的工程假设是 harness 的 turn supervisor 与恢复状态机尚不完整。"
+      },
+      {
+        "id": "one_shot_visual",
+        "type": "chart",
+        "chartId": "one_shot_chart",
+        "layout": "full"
+      },
+      {
+        "id": "error_accounting",
+        "type": "markdown",
+        "sourceId": "dsh_error_audit",
+        "body": "## 先修正错误口径：9 个显式工具错误，23 个可操作失败\n\n你指出的 `read_image` capability mismatch、stale-file edit 与 regex rejection 均已计入 9 个 `isError=true` 事件。进一步审计还发现 10 个 non-zero command exit 和 4 个 JavaScript runtime exception 被返回为 `isError=false`。因此只看 9/178（5.1%）会低估真实失败面；报告以下统一使用 23 个可操作失败，同时保留 9/14 分层，避免把模型脚本错误和 harness 工具契约错误混在一起。"
+      },
+      {
+        "id": "lifecycle_finding",
+        "type": "markdown",
+        "sourceId": "benchmark_analysis",
+        "body": "## 生命周期证据：自动 retry 没有闭合到自动 completion\n\n四组 DSH 合计出现 20 次 stream-timeout occurrence、15 次 LLM retry、8 次人工继续和 3 次运行中权限变更。系统已经尝试恢复，但恢复结果没有可靠地回到同一个 turn 并写入完成状态。"
+      },
+      {
+        "id": "lifecycle_visual",
+        "type": "chart",
+        "chartId": "lifecycle_event_chart",
+        "layout": "full"
+      },
+      {
+        "id": "time_finding",
+        "type": "markdown",
+        "sourceId": "report_query",
+        "body": "## 去掉断线和重试等待后，仍需压缩有效工作路径\n\n按要求扣除可识别的 300 秒 stream-idle timeout、retry backoff 和错误轮次间隔后，DSH 仍需 40.3–72.1 分钟。高 cache hit 并未抵消重复上下文重放；优先减少无效 model/tool round trip，比继续放宽 timeout 更有效。"
+      },
+      {
+        "id": "time_visual",
+        "type": "chart",
+        "chartId": "dsh_time_chart",
+        "layout": "full"
+      },
+      {
+        "id": "case_table",
+        "type": "table",
+        "tableId": "dsh_case_evidence",
+        "layout": "full"
+      },
+      {
+        "id": "capability_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## P0 — 能力协商：纯文本模型不应看到不可执行工具\n\nDeepSeek V4 Flash/Pro 不接受图像输入。DSH 应在首个 turn 前按 model capability registry 过滤工具，隐藏 `read_image`；视觉验收改由 harness 提供 `render_validate` 外部 oracle，向模型返回 console error、DOM/viewport 边界、状态转换断言和图像统计的文本/JSON。需要语义审图时可接独立 vision evaluator，但不要把它伪装成主模型能力。"
+      },
+      {
+        "id": "continuity_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## P0 — Turn supervisor：让恢复留在同一任务里\n\n把固定 idle timeout 改为 progress-aware watchdog：token、reasoning、tool heartbeat 任一前进就续租；断连后以幂等 step/turn ID 在同一 turn 内 resume，并由 harness 原子写入 completion marker。建议给每类恢复设置总预算，预算耗尽时才向用户报告明确的可恢复状态。"
+      },
+      {
+        "id": "tool_contract_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## P1 — Typed tool contract：先让失败成为结构化事实\n\n`bash` 的 non-zero exit 与 runtime exception 必须返回失败状态、exit code、stderr 和 retry class，不能只把 `[exit code: 1]` 塞进 `isError=false` 的文本。再统一错误分类为 `retryable`、`permanent`、`capability_mismatch`、`permission_denied` 和 `stale_revision`。文件 edit 携带 revision token；冲突时自动 re-read + 单次 replay。"
+      },
+      {
+        "id": "error_class_table",
+        "type": "table",
+        "tableId": "tool_error_classes",
+        "layout": "full"
+      },
+      {
+        "id": "headless_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## P1 — Headless preflight：首个模型调用前固定运行契约\n\n提供显式 `--sandbox`、`--approval`、`--non-interactive` 与 capability preflight；一次性解析工作目录、可写路径、浏览器能力和工具清单。无人值守 run 中不应临时切换权限模式，也不应让模型通过失败来发现环境约束。"
+      },
+      {
+        "id": "observability_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## P1 — Observability：让回归指标可直接比较\n\n建议稳定输出 `--json-summary`：resolved CLI/model version、effort、adjusted/wall time、TTFT、token/cache、tool errors by class、retries、timeouts、exit reason 和 artifact paths。产品门槛先看 one-shot 与 automatic recovery，再看 raw error rate；cache hit 只描述复用比例，不应当作效率结论。"
+      },
+      {
+        "id": "implementation_sequence",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## 推荐实现顺序\n\n`model profile → capability-filtered tools → turn supervisor → typed tool adapter → external render validator → JSON summary`\n\n先完成前两项 P0，即可消除最明显的永久失败和人工续跑；P1 再把恢复与观测固化成可回归的产品契约。"
+      },
+      {
+        "id": "recommendation_table",
+        "type": "table",
+        "tableId": "recommendation_plan",
+        "layout": "full"
+      },
+      {
+        "id": "acceptance_section",
+        "type": "markdown",
+        "sourceId": "dsh_recommendation_review",
+        "body": "## 建议的 Preview exit gates\n\n下列阈值是下一轮开发验收建议，不是当前 n=1-per-cell 数据得出的统计结论。先用 deterministic fixtures 封住恢复语义，再把 benchmark 扩展到每格至少 20 次以报告 p50/p90 与 one-shot rate。"
+      },
+      {
+        "id": "acceptance_table",
+        "type": "table",
+        "tableId": "acceptance_gates",
+        "layout": "full"
+      },
+      {
+        "id": "scope_methodology",
+        "type": "markdown",
+        "body": "## Scope, definitions, and methodology\n\n证据来自相同 canonical prompt 的 12 次执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Pi/Codex 的成功也不代表主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。"
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n1. DSH 的 transport 是否能提供 heartbeat、resume cursor 与幂等 request ID？\n2. 当前 tool registry 是否能读取模型 capability profile，并在 prompt 构建前完成过滤？\n3. `read_image` 的产品目标是 host-side vision evaluator，还是应完全从纯文本模型 profile 移除？\n4. Preview release 是否愿意把 one-shot 与 synthetic recovery fixture 设为阻断门槛？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "generatedAt": "2026-08-13T16:05:26Z",
+    "datasets": {
+      "dsh_cases": [
+        {
+          "case": "ds-harness-pro-high",
+          "harness": "DSH",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 2419.179,
+          "duration_min": 40.3197,
+          "wall_duration_min": 61.6077,
+          "excluded_wait_min": 21.2881,
+          "total_input_tokens": 1637168,
+          "cached_input_tokens": 1601024,
+          "uncached_input_tokens": 36144,
+          "cache_hit_rate": 0.9779228521446791,
+          "input_cache_summary": "1.64M / 97.8%",
+          "output_tokens": 111615,
+          "reasoning_output_tokens": 95279,
+          "model_calls": 15,
+          "tool_calls": 18,
+          "tool_failures": 0,
+          "tool_failure_rate": 0,
+          "tool_error_summary": "0/18",
+          "call_summary": "15/18",
+          "one_shot_completed": false,
+          "one_shot_rate": 0,
+          "completion_mode": "human-assisted (2 continues)",
+          "manual_continues": 2,
+          "stream_timeouts": 4,
+          "llm_retries": 3,
+          "permission_changes": 1,
+          "retry_timeout_summary": "3/4",
+          "quality_score": 87,
+          "critical_status": "Pass",
+          "quality_status": "87 · Pass",
+          "observed_result": "Clean DSH round trip; central labels overlap.",
+          "output_path": "runs/dsh/ds-harness-pro-high/floppy-exploded-blueprint.html",
+          "case_label": "Pro/high",
+          "duration_pair": "40.3 / 61.6 min",
+          "retry_timeout_pair": "3 / 4",
+          "actionable_failures": 2,
+          "declared_failures": 0,
+          "command_failures": 2,
+          "failure_summary": "2 (0 + 2)"
+        },
+        {
+          "case": "ds-harness-flash-max",
+          "harness": "DSH",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 2736.075,
+          "duration_min": 45.6013,
+          "wall_duration_min": 66.8914,
+          "excluded_wait_min": 21.2901,
+          "total_input_tokens": 3714005,
+          "cached_input_tokens": 3658624,
+          "uncached_input_tokens": 55381,
+          "cache_hit_rate": 0.9850886038117881,
+          "input_cache_summary": "3.71M / 98.5%",
+          "output_tokens": 118683,
+          "reasoning_output_tokens": 98023,
+          "model_calls": 31,
+          "tool_calls": 34,
+          "tool_failures": 2,
+          "tool_failure_rate": 0.058823529411764705,
+          "tool_error_summary": "2/34",
+          "call_summary": "31/34",
+          "one_shot_completed": false,
+          "one_shot_rate": 0,
+          "completion_mode": "human-assisted (2 continues)",
+          "manual_continues": 2,
+          "stream_timeouts": 4,
+          "llm_retries": 3,
+          "permission_changes": 1,
+          "retry_timeout_summary": "3/4",
+          "quality_score": 88,
+          "critical_status": "Pass",
+          "quality_status": "88 · Pass",
+          "observed_result": "Best DSH; round trip passes, minor viewport clipping.",
+          "output_path": "runs/dsh/ds-harness-flash-max/floppy-blueprint.html",
+          "case_label": "Flash/max",
+          "duration_pair": "45.6 / 66.9 min",
+          "retry_timeout_pair": "3 / 4",
+          "actionable_failures": 7,
+          "declared_failures": 2,
+          "command_failures": 5,
+          "failure_summary": "7 (2 + 5)"
+        },
+        {
+          "case": "ds-harness-flash-high",
+          "harness": "DSH",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 2746.048,
+          "duration_min": 45.7675,
+          "wall_duration_min": 78.0797,
+          "excluded_wait_min": 32.3123,
+          "total_input_tokens": 5113143,
+          "cached_input_tokens": 5081856,
+          "uncached_input_tokens": 31287,
+          "cache_hit_rate": 0.9938810629782895,
+          "input_cache_summary": "5.11M / 99.4%",
+          "output_tokens": 111130,
+          "reasoning_output_tokens": 85718,
+          "model_calls": 49,
+          "tool_calls": 49,
+          "tool_failures": 4,
+          "tool_failure_rate": 0.08163265306122448,
+          "tool_error_summary": "4/49",
+          "call_summary": "49/49",
+          "one_shot_completed": false,
+          "one_shot_rate": 0,
+          "completion_mode": "human-assisted (2 continues)",
+          "manual_continues": 2,
+          "stream_timeouts": 6,
+          "llm_retries": 4,
+          "permission_changes": 0,
+          "retry_timeout_summary": "4/6",
+          "quality_score": 79,
+          "critical_status": "Pass",
+          "quality_status": "79 · Pass",
+          "observed_result": "Assembled shutter detached; exploded labels overlap.",
+          "output_path": "runs/dsh/ds-harness-flash-high/floppy-exploded-blueprint.html",
+          "case_label": "Flash/high",
+          "duration_pair": "45.8 / 78.1 min",
+          "retry_timeout_pair": "4 / 6",
+          "actionable_failures": 9,
+          "declared_failures": 4,
+          "command_failures": 5,
+          "failure_summary": "9 (4 + 5)"
+        },
+        {
+          "case": "ds-harness-pro-max",
+          "harness": "DSH",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 4328.985,
+          "duration_min": 72.1497,
+          "wall_duration_min": 104.6595,
+          "excluded_wait_min": 32.5097,
+          "total_input_tokens": 11026683,
+          "cached_input_tokens": 10995712,
+          "uncached_input_tokens": 30971,
+          "cache_hit_rate": 0.9971912677638416,
+          "input_cache_summary": "11.03M / 99.7%",
+          "output_tokens": 175286,
+          "reasoning_output_tokens": 127599,
+          "model_calls": 75,
+          "tool_calls": 77,
+          "tool_failures": 3,
+          "tool_failure_rate": 0.03896103896103896,
+          "tool_error_summary": "3/77",
+          "call_summary": "75/77",
+          "one_shot_completed": false,
+          "one_shot_rate": 0,
+          "completion_mode": "human-assisted (2 continues)",
+          "manual_continues": 2,
+          "stream_timeouts": 6,
+          "llm_retries": 5,
+          "permission_changes": 1,
+          "retry_timeout_summary": "5/6",
+          "quality_score": 72,
+          "critical_status": "Pass",
+          "quality_status": "72 · Pass",
+          "observed_result": "Undersized scene; labels and vertical title clipped.",
+          "output_path": "runs/dsh/ds-harness-pro-max/floppy-blueprint.html",
+          "case_label": "Pro/max",
+          "duration_pair": "72.1 / 104.7 min",
+          "retry_timeout_pair": "5 / 6",
+          "actionable_failures": 5,
+          "declared_failures": 3,
+          "command_failures": 2,
+          "failure_summary": "5 (3 + 2)"
+        }
+      ],
+      "harness_summary": [
+        {
+          "harness": "Codex",
+          "cases": 4,
+          "one_shot_completed": 4,
+          "one_shot_rate": 1,
+          "tool_calls": 93,
+          "tool_failures": 17,
+          "tool_failure_rate": 0.1827956989247312,
+          "llm_retries": 0,
+          "stream_timeouts": 0,
+          "manual_continues": 0,
+          "permission_changes": 0
+        },
+        {
+          "harness": "Pi",
+          "cases": 4,
+          "one_shot_completed": 4,
+          "one_shot_rate": 1,
+          "tool_calls": 94,
+          "tool_failures": 13,
+          "tool_failure_rate": 0.13829787234042554,
+          "llm_retries": 0,
+          "stream_timeouts": 0,
+          "manual_continues": 0,
+          "permission_changes": 0
+        },
+        {
+          "harness": "DSH",
+          "cases": 4,
+          "one_shot_completed": 0,
+          "one_shot_rate": 0,
+          "tool_calls": 178,
+          "tool_failures": 9,
+          "tool_failure_rate": 0.05056179775280899,
+          "llm_retries": 15,
+          "stream_timeouts": 20,
+          "manual_continues": 8,
+          "permission_changes": 3
+        }
+      ],
+      "lifecycle_events": [
+        {
+          "event": "Stream timeout occurrence",
+          "count": 20,
+          "interpretation": "Turn continuity signal"
+        },
+        {
+          "event": "LLM retry",
+          "count": 15,
+          "interpretation": "Automatic retry attempt"
+        },
+        {
+          "event": "Manual continuation",
+          "count": 8,
+          "interpretation": "Unattended completion failure"
+        },
+        {
+          "event": "Permission mode change",
+          "count": 3,
+          "interpretation": "Preflight contract gap"
+        }
+      ],
+      "error_classes": [
+        {
+          "error_class": "non-zero command exit",
+          "incidents": 10,
+          "affected_cases": 4,
+          "failure_surface": "command/runtime failure",
+          "recommended_handler": "Return a typed error envelope with exit code and stderr"
+        },
+        {
+          "error_class": "stale file revision",
+          "incidents": 5,
+          "affected_cases": 3,
+          "failure_surface": "harness-declared tool failure",
+          "recommended_handler": "Re-read and replay once with a revision token"
+        },
+        {
+          "error_class": "runtime exception without failure flag",
+          "incidents": 4,
+          "affected_cases": 1,
+          "failure_surface": "command/runtime failure",
+          "recommended_handler": "Detect process failure and set the tool error flag"
+        },
+        {
+          "error_class": "image capability mismatch",
+          "incidents": 3,
+          "affected_cases": 3,
+          "failure_surface": "harness-declared tool failure",
+          "recommended_handler": "Hide read_image and route to render_validate"
+        },
+        {
+          "error_class": "unsupported regex feature",
+          "incidents": 1,
+          "affected_cases": 1,
+          "failure_surface": "harness-declared tool failure",
+          "recommended_handler": "Return an executable compatibility hint"
+        }
+      ],
+      "recommendations": [
+        {
+          "priority": "P0",
+          "workstream": "Turn continuity",
+          "proposed_change": "Progress-aware watchdog, same-turn resume, idempotent steps, atomic completion marker.",
+          "exit_signal": "Synthetic stream interruptions recover without user continuation."
+        },
+        {
+          "priority": "P0",
+          "workstream": "Capability negotiation",
+          "proposed_change": "Resolve model capabilities before the turn and hide incompatible tools.",
+          "exit_signal": "Zero permanent capability-mismatch tool calls."
+        },
+        {
+          "priority": "P0",
+          "workstream": "Visual validation",
+          "proposed_change": "Add a text/JSON render_validate oracle for console, DOM, viewport, state and image statistics.",
+          "exit_signal": "Pure-text models verify visual tasks without direct image input."
+        },
+        {
+          "priority": "P1",
+          "workstream": "Typed tool recovery",
+          "proposed_change": "Normalize non-zero exits/runtime exceptions into typed failures; make stale edits revision-aware.",
+          "exit_signal": "No actionable subprocess failure is returned as success."
+        },
+        {
+          "priority": "P1",
+          "workstream": "Headless preflight",
+          "proposed_change": "Resolve sandbox, approval, paths, browser and tool support before the first model call.",
+          "exit_signal": "No mid-run permission changes in non-interactive runs."
+        },
+        {
+          "priority": "P1",
+          "workstream": "Observability",
+          "proposed_change": "Emit a stable JSON summary for versions, timings, tokens/cache, retries, errors and exit reason.",
+          "exit_signal": "Every benchmark run produces a schema-valid summary."
+        },
+        {
+          "priority": "P2",
+          "workstream": "Reproducibility and UX",
+          "proposed_change": "Pin resolved CLI integrity, add dsh resume, and explain automatic recovery states.",
+          "exit_signal": "A run can be reproduced and resumed from its manifest."
+        }
+      ],
+      "acceptance_gates": [
+        {
+          "gate": "One-shot completion",
+          "observed": "0/4 DSH cases",
+          "preview_exit_target": "4/4 regression; then >=95% across n>=20",
+          "measurement": "Completed artifact without manual continuation"
+        },
+        {
+          "gate": "Manual continuation",
+          "observed": "8 messages",
+          "preview_exit_target": "0 in unattended mode",
+          "measurement": "Continuation messages after canonical prompt"
+        },
+        {
+          "gate": "Capability mismatch",
+          "observed": "3 read_image failures",
+          "preview_exit_target": "0 after preflight",
+          "measurement": "Permanent mismatch calls by class"
+        },
+        {
+          "gate": "Recovery fixtures",
+          "observed": "Not measured",
+          "preview_exit_target": "100% within bounded retry budget",
+          "measurement": "Injected stream and stale-edit scenarios"
+        },
+        {
+          "gate": "Outcome normalization",
+          "observed": "14 failures not flagged as tool errors",
+          "preview_exit_target": "0 unflagged actionable failures",
+          "measurement": "Non-zero exits and runtime exceptions vs tool status"
+        },
+        {
+          "gate": "Permission stability",
+          "observed": "3 mid-run changes",
+          "preview_exit_target": "0 in headless mode",
+          "measurement": "Permission-mode transitions per run"
+        },
+        {
+          "gate": "Telemetry completeness",
+          "observed": "No stable summary contract",
+          "preview_exit_target": "100% schema-valid summaries",
+          "measurement": "JSON schema validation and explicit exit reason"
+        }
+      ]
+    }
+  }
+}
