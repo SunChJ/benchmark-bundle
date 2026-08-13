@@ -700,11 +700,16 @@ function showLabels() {
       l.obj.visible = true;
       l.leader.visible = true;
       fadeTo(l.fader, 1, 400);
-      const id = requestAnimationFrame(() => {
-        pendingLabelRAF.delete(id);
-        l.el.style.opacity = '1';
+      // 双重 rAF：先让 CSS2DRenderer 解除 display:none 并完成一帧渲染，
+      // 再改 opacity，CSS transition 才能正常触发（否则会瞬现）。
+      const id1 = requestAnimationFrame(() => {
+        const id2 = requestAnimationFrame(() => {
+          pendingLabelRAF.delete(id2);
+          l.el.style.opacity = '1';
+        });
+        pendingLabelRAF.add(id2);
       });
-      pendingLabelRAF.add(id);
+      pendingLabelRAF.add(id1);
     }, 400 + i * 60));
   });
 }
