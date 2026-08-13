@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3.5" Floppy Disk — Blueprint Exploded View</title>
+  <style>
+    :root {
+      --blue: #4169E1;
+      --bg: #F5F7FA;
+      --dot: #DCE3F0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background-color: var(--bg);
+      font-family: "Courier New", Courier, monospace;
+      user-select: none;
+    }
+
+    #webgl-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      display: block;
+    }
+
+    #css2d-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .label {
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      text-shadow: 0 0 6px rgba(65, 105, 225, 0.18);
+    }
+
+    .label::after {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin-left: 6px;
+      vertical-align: middle;
+      background: var(--blue);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(65, 105, 225, 0.7);
+    }
+
+    #hint {
+      position: fixed;
+      left: 50%;
+      bottom: 26px;
+      transform: translateX(-50%);
+      z-index: 10;
+      color: var(--blue);
+      font-size: 13px;
+      letter-spacing: 3px;
+      opacity: 0.6;
+      pointer-events: none;
+      animation: breathe 2.4s ease-in-out infinite;
+      transition: opacity 0.5s ease;
+    }
+
+    #hint.hidden {
+      opacity: 0;
+      animation: none;
+    }
+
+    #hint small {
+      display: block;
+      margin-top: 8px;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      opacity: 0.68;
+      text-align: center;
+    }
+
+    .side-title {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 10;
+      color: var(--blue);
+      font-size: 15px;
+      letter-spacing: 5px;
+      opacity: 0.42;
+      pointer-events: none;
+      writing-mode: vertical-rl;
+    }
+
+    #side-left {
+      left: 24px;
+    }
+
+    #side-right {
+      right: 24px;
+      transform: translateY(-50%) rotate(180deg);
+    }
+
+    @keyframes breathe {
+      0%,
+      100% {
+        opacity: 0.32;
+      }
+      50% {
+        opacity: 0.82;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="webgl-canvas"></canvas>
+  <div id="css2d-layer"></div>
+
+  <div id="hint">
+    PRESS [ SPACE ] TO EXPLODE
+    <small>LMB: ORBIT · WHEEL: ZOOM · RMB: PAN</small>
+  </div>
+  <div id="side-left" class="side-title"></div>
+  <div id="side-right" class="side-title"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+
+  <script>
+    (() => {
+      "use strict";
+
+      // === BASIC CONSTANTS ===
+      const EDGE_COLOR = 0x4169E1;
+      const FILL_COLOR = 0xEAF0FF;
+      const DISK_COLOR = 0x7B9DF8;
+      const SHUTTER_COLOR = 0x4A5568;
+
+      const STAGGER = 0.08;
+      const ANIM_DURATION = 3.0;
+
+      // === SCENE / CAMERA / RENDERERS ===
+      const canvas = document.getElementById("webgl-canvas");
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        alpha: true
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0);
+
+      const scene = new THREE.Scene();
+      scene.background = null;
+
+      let frustumSize;
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+      camera.position.set(100, 80, 100);
+      camera.lookAt(0, 0, 0);
+
+      function updateCameraFrustum() {
+        const aspect = window.innerWidth / window.innerHeight;
+        const previousZoom = camera.zoom;
+        // 保证横竖屏下都能容纳爆炸展开后的盘体。
+        frustumSize = Math.max(150, 150 / aspect);
+        const halfW = (frustumSize * aspect) / 2;
+        const halfH = frustumSize / 2;
+        camera.left = -halfW;
+        camera.right = halfW;
+        camera.top = halfH;
+        camera.bottom = -halfH;
+        camera.zoom = previousZoom;
+        camera.updateProjectionMatrix();
+      }
+      updateCameraFrustum();
+
+      const cssRenderer = new THREE.CSS2DRenderer();
+      cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      cssRenderer.domElement.id = "css2d-layer";
+      cssRenderer.domElement.style.position = "fixed";
+      cssRenderer.domElement.style.inset = "0";
+      cssRenderer.domElement.style.zIndex = "5";
+      cssRenderer.domElement.style.pointerEvents = "none";
+      document.body.replaceChild(cssRenderer.domElement, document.getElementById("css2d-layer"));
+
+      // 使用 Canvas 绘制点阵背景，避免依赖外部图片。
+      function applyDotGridBackground() {
+        const dotCanvas = document.createElement("canvas");
+        dotCanvas.width = 32;
+        dotCanvas.height = 32;
+        const ctx = dotCanvas.getContext("2d");
+        ctx.fillStyle = "#F5F7FA";
+        ctx.fillRect(0, 0, 32, 32);
+        ctx.fillStyle = "#DCE3F0";
+        ctx.beginPath();
+        ctx.arc(6, 6, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(22, 22, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        document.body.style.backgroundImage = `url("${dotCanvas.toDataURL()}")`;
+        document.body.style.backgroundSize = "32px 32px";
+      }
+      applyDotGridBackground();
+
+      // === SHARED MATERIALS ===
+      const edgeMaterial = new THREE.LineBasicMaterial({
+        color: EDGE_COLOR,
+        linewidth: 1
+      });
+
+      function makeFillMaterial(color, opacity) {
+        return new THREE.MeshBasicMaterial({
+          color,
+          opacity,
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+      }
+
+      function makeOpaqueShutterMaterial() {
+        return new THREE.MeshBasicMaterial({
+          color: SHUTTER_COLOR,
+          side: THREE.DoubleSide
+        });
+      }
+
+      // === GEOMETRY HELPERS ===
+      function createPart(name, targetOpacity) {
+        const group = new THREE.Group();
+        group.name = name;
+        group.userData.opacityMaterials = [];
+        group.userData.targetOpacity = targetOpacity;
+        return group;
+      }
+
+      function addMeshWithEdges(group, geometry, material, edgeThreshold = 22) {
+        const mesh = new THREE.Mesh(geometry, material);
+        group.add(mesh);
+        if (material.transparent) {
+          group.userData.opacityMaterials.push(material);
+        }
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geometry, edgeThreshold),
+          edgeMaterial
+        );
+        group.add(edges);
+        return mesh;
+      }
+
+      function addLine(group, points, opacity = 1) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({
+          color: EDGE_COLOR,
+          transparent: true,
+          opacity
+        });
+        const line = new THREE.Line(geometry, material);
+        group.add(line);
+        return line;
+      }
+
+      function addDashedLine(parent, points) {
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineDashedMaterial({
+          color: EDGE_COLOR,
+          dashSize: 1.6,
+          gapSize: 1.0,
+          transparent: true,
+          opacity: 0
+        });
+        const line = new THREE.Line(geometry, material);
+        line.computeLineDistances();
+        line.visible = false;
+        parent.add(line);
+        dashLines.push(line);
+        return line;
+      }
+
+      function extrudePlanarShape(shape, depth) {
+        const geometry = new THREE.ExtrudeGeometry(shape, {
+          depth,
+          bevelEnabled: false,
+          curveSegments: 40
+        });
+        // 将 Shape 从 XY 平面旋转到 XZ 平面，并使厚度沿 Y 轴居中。
+        geometry.translate(0, 0, -depth / 2);
+        geometry.rotateX(-Math.PI / 2);
+        return geometry;
+      }
+
+      function chamferRectShape(w, h, chamfer) {
+        const x0 = -w / 2;
+        const x1 = w / 2;
+        const y0 = -h / 2;
+        const y1 = h / 2;
+        const c = chamfer;
+        const shape = new THREE.Shape();
+        shape.moveTo(x0 + c, y0);
+        shape.lineTo(x1 - c, y0);
+        shape.lineTo(x1, y0 + c);
+        shape.lineTo(x1, y1 - c);
+        shape.lineTo(x1 - c, y1);
+        shape.lineTo(x0 + c, y1);
+        shape.lineTo(x0, y1 - c);
+        shape.lineTo(x0, y0 + c);
+        shape.closePath();
+        return shape;
+      }
+
+      // 在最终的 XZ 平面坐标中创建矩形孔；Shape 位于 XY，因此 y = -z。
+      function rectHoleByXZ(cx, cz, w, h) {
+        const p = new THREE.Path();
+        const x0 = cx - w / 2;
+        const x1 = cx + w / 2;
+        const cy = -cz;
+        const y0 = cy - h / 2;
+        const y1 = cy + h / 2;
+        // 与外部轮廓保持相反的绕向，供 holes 使用。
+        p.moveTo(x0, y0);
+        p.lineTo(x0, y1);
+        p.lineTo(x1, y1);
+        p.lineTo(x1, y0);
+        p.closePath();
+        return p;
+      }
+
+      function circleHoleByXZ(cx, cz, radius) {
+        const p = new THREE.Path();
+        p.absarc(cx, -cz, radius, 0, Math.PI * 2, true);
+        return p;
+      }
+
+      function dustLinerShape() {
+        const outerRadius = 24;
+        const innerRadius = 20;
+        const gap = 0.72;
+        // 缺口朝向前缘（+Z）。
+        const theta0 = -Math.PI / 2 - gap / 2;
+        const theta1 = -Math.PI / 2 + gap / 2;
+
+        const shape = new THREE.Shape();
+        shape.moveTo(
+          innerRadius * Math.cos(theta0),
+          innerRadius * Math.sin(theta0)
+        );
+        shape.lineTo(
+          outerRadius * Math.cos(theta0),
+          outerRadius * Math.sin(theta0)
+        );
+        shape.absarc(0, 0, outerRadius, theta0, theta1, false);
+        shape.lineTo(
+          innerRadius * Math.cos(theta1),
+          innerRadius * Math.sin(theta1)
+        );
+        shape.absarc(0, 0, innerRadius, theta1, theta0, true);
+        return shape;
+      }
+
+      function createArrowMarker() {
+        const group = new THREE.Group();
+        const y = 1.04;
+        addLine(group, [
+          new THREE.Vector3(2, y, 28),
+          new THREE.Vector3(7, y, 24),
+          new THREE.Vector3(2, y, 21),
+          new THREE.Vector3(2, y, 28)
+        ]);
+        return group;
+      }
+
+      function createReflectionLines() {
+        const group = new THREE.Group();
+        const y = 0.18;
+        addLine(group, [
+          new THREE.Vector3(-10, y, -5),
+          new THREE.Vector3(-3, y, 4)
+        ]);
+        addLine(group, [
+          new THREE.Vector3(5, y, -7),
+          new THREE.Vector3(11, y, 1)
+        ]);
+        addLine(group, [
+          new THREE.Vector3(-13, y, 9),
+          new THREE.Vector3(-6, y, 14)
+        ]);
+        return group;
+      }
+
+      // 磁头通道：三处开孔必须使用同一组局部参数。
+      const HEAD_SLOT = {
+        cx: -9,
+        cz: 21,
+        w: 6,
+        h: 14
+      };
+
+      // === GEOMETRIC PARTS ===
+
+      // --- TOP SHELL ---
+      function createTopShell() {
+        const part = createPart("TOP_SHELL", 0.08);
+
+        const outer = chamferRectShape(60, 60, 3);
+        // (a) HD NOTCH
+        outer.holes.push(rectHoleByXZ(-28, -28, 4, 4));
+        // (d) Shutter opening slot: 与 SHUTTER / BOTTOM SHELL 共用 HEAD_SLOT。
+        outer.holes.push(rectHoleByXZ(HEAD_SLOT.cx, HEAD_SLOT.cz, HEAD_SLOT.w, HEAD_SLOT.h));
+
+        const bodyGeo = extrudePlanarShape(outer, 2);
+        addMeshWithEdges(part, bodyGeo, makeFillMaterial(FILL_COLOR, 1), 24);
+
+        // (b) 标签凹槽：上半部分中央的大型下沉矩形。
+        const labelRecessGeo = new THREE.BoxGeometry(36, 0.25, 22);
+        const labelRecess = addMeshWithEdges(
+          part,
+          labelRecessGeo,
+          makeFillMaterial(FILL_COLOR, 1),
+          24
+        );
+        labelRecess.position.set(0, 0.72, -9);
+
+        // (c) 内部凹槽：标签下方较小的滑盖滑动凹陷区。
+        const innerRecessGeo = new THREE.BoxGeometry(20, 0.2, 10);
+        const innerRecess = addMeshWithEdges(
+          part,
+          innerRecessGeo,
+          makeFillMaterial(FILL_COLOR, 1),
+          24
+        );
+        innerRecess.position.set(0, 0.66, 7);
+
+        // (e) 箭头标记
+        part.add(createArrowMarker());
+
+        return part;
+      }
+
+      // --- DUST LINER ---
+      function createDustLiner(name) {
+        const part = createPart(name, 0.08);
+        const shape = dustLinerShape();
+        const geometry = extrudePlanarShape(shape, 0.16);
+        addMeshWithEdges(part, geometry, makeFillMaterial(FILL_COLOR, 1), 30);
+        return part;
+      }
+
+      // --- MAGNETIC DISK ---
+      function createMagneticDisk() {
+        const part = createPart("MAGNETIC_DISK", 0.5);
+        const geometry = new THREE.CylinderGeometry(22, 22, 0.3, 72);
+        addMeshWithEdges(part, geometry, makeFillMaterial(DISK_COLOR, 1), 24);
+        part.add(createReflectionLines());
+        return part;
+      }
+
+      // --- HUB ---
+      function createHub() {
+        const part = createPart("HUB", 0.08);
+        const shape = new THREE.Shape();
+        shape.absarc(0, 0, 5, 0, Math.PI * 2, false);
+
+        // 中央主轴孔。
+        shape.holes.push(circleHoleByXZ(0, 0, 1.5));
+        // 旁边的方形定位卡口。
+        shape.holes.push(rectHoleByXZ(2.4, 0, 1.4, 1.4));
+
+        const geometry = extrudePlanarShape(shape, 0.4);
+        addMeshWithEdges(part, geometry, makeFillMaterial(FILL_COLOR, 1), 28);
+        return part;
+      }
+
+      // --- BOTTOM SHELL ---
+      function createBottomShell() {
+        const part = createPart("BOTTOM_SHELL", 0.08);
+
+        const outer = chamferRectShape(60, 60, 3);
+        // (b) 中央圆孔：主轴穿过。
+        outer.holes.push(circleHoleByXZ(0, 0, 7));
+        // (f) WRITE PROTECT NOTCH：右后角。
+        outer.holes.push(rectHoleByXZ(27, -27, 3, 3));
+        // (g) Shutter opening slot：与上壳/滑盖同一 HEAD_SLOT。
+        outer.holes.push(rectHoleByXZ(HEAD_SLOT.cx, HEAD_SLOT.cz, HEAD_SLOT.w, HEAD_SLOT.h));
+
+        const bodyGeo = extrudePlanarShape(outer, 2);
+        addMeshWithEdges(part, bodyGeo, makeFillMaterial(FILL_COLOR, 1), 24);
+
+        // (a) 中央大圆形凹陷。
+        const recessGeo = new THREE.CylinderGeometry(22, 22, 0.25, 72);
+        const recess = addMeshWithEdges(
+          part,
+          recessGeo,
+          makeFillMaterial(FILL_COLOR, 1),
+          26
+        );
+        recess.position.y = 0.76;
+
+        // (c) 四角定位柱。
+        const pillarGeo = new THREE.CylinderGeometry(1.5, 1.5, 1.0, 24);
+        const pillarPositions = [
+          [-24, -24],
+          [24, -24],
+          [24, 24],
+          [-24, 24]
+        ];
+        pillarPositions.forEach(([px, pz]) => {
+          const pillar = addMeshWithEdges(
+            part,
+            pillarGeo,
+            makeFillMaterial(FILL_COLOR, 1),
+            24
+          );
+          pillar.position.set(px, 0.5, pz);
+        });
+
+        // (d) LIFTER。
+        const lifterGeo = new THREE.BoxGeometry(8, 1, 4);
+        const lifter = addMeshWithEdges(
+          part,
+          lifterGeo,
+          makeFillMaterial(FILL_COLOR, 1),
+          24
+        );
+        lifter.position.set(0, 0.5, 18);
+
+        // (e) SHUTTER SPRING 区：前缘中部小矩形凹槽。
+        const springGeo = new THREE.BoxGeometry(10, 0.25, 4);
+        const spring = addMeshWithEdges(
+          part,
+          springGeo,
+          makeFillMaterial(FILL_COLOR, 1),
+          24
+        );
+        spring.position.set(8, 0.72, 24);
+
+        return part;
+      }
+
+      // --- SHUTTER ---
+      function createShutter() {
+        const part = createPart("SHUTTER", 1.0);
+
+        // 快门板面：长边沿 X，短边沿 Z。矩形通孔短边(6)与快门长边平行。
+        const outer = new THREE.Shape();
+        outer.moveTo(-20, -29);
+        outer.lineTo(2, -29);
+        outer.lineTo(2, -13);
+        outer.lineTo(-20, -13);
+        outer.closePath();
+        outer.holes.push(
+          rectHoleByXZ(HEAD_SLOT.cx, HEAD_SLOT.cz, HEAD_SLOT.w, HEAD_SLOT.h)
+        );
+
+        const geometry = extrudePlanarShape(outer, 1);
+        // 快门本体使用不透明实体金属材质。
+        addMeshWithEdges(part, geometry, makeOpaqueShutterMaterial(), 22);
+        return part;
+      }
+
+      // --- WRITE PROTECT TAB ---
+      function createWriteProtectTab() {
+        const part = createPart("WRITE_PROTECT_TAB", 0.08);
+        const geometry = new THREE.BoxGeometry(3, 2, 3);
+        addMeshWithEdges(part, geometry, makeFillMaterial(FILL_COLOR, 1), 24);
+        return part;
+      }
+
+      // === BUILD PARTS ===
+      const topShell = createTopShell();
+      const dustLinerTop = createDustLiner("DUST_LINER_TOP");
+      const hub = createHub();
+      const disk = createMagneticDisk();
+      const dustLinerBottom = createDustLiner("DUST_LINER_BOTTOM");
+      const bottomShell = createBottomShell();
+      const shutter = createShutter();
+      const writeProtectTab = createWriteProtectTab();
+
+      [topShell, dustLinerTop, hub, disk, dustLinerBottom, bottomShell, shutter, writeProtectTab]
+        .forEach((part) => scene.add(part));
+
+      // === ANIMATION: part registration ===
+      const parts = [];
+      function registerPart(group, from, to, order) {
+        parts.push({
+          group,
+          from: from.clone(),
+          to: to.clone(),
+          delay: order * STAGGER,
+          materials: group.userData.opacityMaterials,
+          targetOpacity: group.userData.targetOpacity
+        });
+      }
+
+      registerPart(topShell, new THREE.Vector3(0, 1.5, 0), new THREE.Vector3(0, 45, 0), 0);
+      registerPart(dustLinerTop, new THREE.Vector3(0, 1.0, 0), new THREE.Vector3(0, 30, 0), 1);
+      registerPart(hub, new THREE.Vector3(0, 0.7, 0), new THREE.Vector3(0, 18, 0), 2);
+      registerPart(disk, new THREE.Vector3(0, 0.5, 0), new THREE.Vector3(0, 15, 0), 3);
+      registerPart(dustLinerBottom, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0), 4);
+      registerPart(bottomShell, new THREE.Vector3(0, -1.5, 0), new THREE.Vector3(0, -15, 0), 5);
+      // SHUTTER 几何本身相对 Group 原点有局部偏移（使窗口对齐 HEAD_SLOT），
+      // 因此 exploded Group 位置按“板面中心 = (-30, -15, 30)”反推。
+      registerPart(shutter, new THREE.Vector3(0, -1.5, 0), new THREE.Vector3(-21, -15, 9), 6);
+      registerPart(writeProtectTab, new THREE.Vector3(26, -1, -26), new THREE.Vector3(38, -15, -38), 7);
+
+      // 初始置于组装态。
+      parts.forEach((p) => {
+        p.group.position.copy(p.from);
+        p.materials.forEach((m) => {
+          m.opacity = 1;
+        });
+      });
+
+      // === ANNOTATIONS / LABELS ===
+      const dashLines = [];
+      const labelItems = [];
+
+      function createLabel(text, anchor, target) {
+        const el = document.createElement("div");
+        el.className = "label";
+        el.textContent = text;
+        el.style.opacity = "0";
+        el.style.transition = "opacity 0.4s ease";
+
+        const cssObject = new THREE.CSS2DObject(el);
+        cssObject.position.copy(anchor);
+        scene.add(cssObject);
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([anchor, target]);
+        const lineMat = new THREE.LineBasicMaterial({
+          color: EDGE_COLOR,
+          transparent: true,
+          opacity: 0
+        });
+        const leader = new THREE.Line(lineGeo, lineMat);
+        leader.visible = false;
+        scene.add(leader);
+
+        labelItems.push({
+          dom: el,
+          cssObject,
+          leader,
+          shown: false
+        });
+      }
+
+      function createAllLabels() {
+        createLabel(
+          "HD NOTCH",
+          new THREE.Vector3(-43, 48, -36),
+          new THREE.Vector3(-28, 45, -28)
+        );
+        createLabel(
+          "TOP SHELL",
+          new THREE.Vector3(52, 48, -30),
+          new THREE.Vector3(40, 45, -24)
+        );
+        createLabel(
+          "DUST LINER",
+          new THREE.Vector3(48, 30, 30),
+          new THREE.Vector3(24, 30, 20)
+        );
+        createLabel(
+          "DUST LINER",
+          new THREE.Vector3(48, 0, -30),
+          new THREE.Vector3(24, 0, -20)
+        );
+        createLabel(
+          "MAGNETIC DISK",
+          new THREE.Vector3(42, 15, 22),
+          new THREE.Vector3(20, 15, 12)
+        );
+        createLabel(
+          "HUB",
+          new THREE.Vector3(31, 18, 31),
+          new THREE.Vector3(6, 18, 6)
+        );
+        createLabel(
+          "BOTTOM SHELL",
+          new THREE.Vector3(52, -15, -32),
+          new THREE.Vector3(40, -15, -24)
+        );
+        createLabel(
+          "LIFTER",
+          new THREE.Vector3(-38, -15, 40),
+          new THREE.Vector3(0, -15, 18)
+        );
+        createLabel(
+          "SHUTTER SPRING",
+          new THREE.Vector3(22, -15, 48),
+          new THREE.Vector3(8, -15, 24)
+        );
+        createLabel(
+          "WRITE PROTECT NOTCH",
+          new THREE.Vector3(50, -15, -42),
+          new THREE.Vector3(27, -15, -27)
+        );
+        createLabel(
+          "SHUTTER",
+          new THREE.Vector3(-50, -15, 48),
+          new THREE.Vector3(-30, -15, 30)
+        );
+        createLabel(
+          "WRITE PROTECT TAB",
+          new THREE.Vector3(54, -15, -49),
+          new THREE.Vector3(38, -15, -38)
+        );
+      }
+
+      function createDashedGuides() {
+        const corners = [
+          [-27, -27],
+          [27, -27],
+          [27, 27],
+          [-27, 27]
+        ];
+        corners.forEach(([x, z]) => {
+          addDashedLine(scene, [
+            new THREE.Vector3(x, 45, z),
+            new THREE.Vector3(x, -15, z)
+          ]);
+        });
+
+        // 快门与防写入滑块使用斜向虚线回到下壳对应位置。
+        addDashedLine(scene, [
+          new THREE.Vector3(-30, -15, 30),
+          new THREE.Vector3(-9, -15, 21)
+        ]);
+        addDashedLine(scene, [
+          new THREE.Vector3(38, -15, -38),
+          new THREE.Vector3(27, -15, -27)
+        ]);
+      }
+
+      createAllLabels();
+      createDashedGuides();
+
+      // === CONTROLS ===
+      let controls;
+      function setupControls() {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableRotate = true;
+        controls.enableZoom = true;
+        controls.enablePan = true;
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+
+        // 显式设置 DCC 常见的鼠标操作习惯。
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN
+        };
+
+        controls.minZoom = 0.45;
+        controls.maxZoom = 2.8;
+        controls.zoomSpeed = 1.0;
+        controls.panSpeed = 0.8;
+        controls.screenSpacePanning = true;
+
+        renderer.domElement.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+        });
+      }
+      setupControls();
+
+      function clampControlsTarget() {
+        controls.target.x = THREE.MathUtils.clamp(controls.target.x, -28, 28);
+        controls.target.y = THREE.MathUtils.clamp(controls.target.y, -16, 16);
+        controls.target.z = THREE.MathUtils.clamp(controls.target.z, -28, 28);
+      }
+
+      // === ANIMATION: state machine ===
+      let animState = "assembled";
+      let animElapsed = 0;
+      let labelTime = 0;
+
+      const hintEl = document.getElementById("hint");
+      const leftTitleEl = document.getElementById("side-left");
+      const rightTitleEl = document.getElementById("side-right");
+      leftTitleEl.textContent = "FIG_001";
+      rightTitleEl.textContent = '[ 3.5" FLOPPY DISK ]';
+
+      function easeInOutCubic(t) {
+        return t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+
+      function applyPart(part, progress) {
+        part.group.position.lerpVectors(part.from, part.to, progress);
+        const opacity = THREE.MathUtils.lerp(1, part.targetOpacity, progress);
+        part.materials.forEach((material) => {
+          material.opacity = opacity;
+        });
+      }
+
+      function updateHintVisibility() {
+        hintEl.classList.toggle("hidden", animState !== "assembled");
+      }
+
+      function showLabels() {
+        labelTime = 0;
+      }
+
+      function hideLabels() {
+        labelTime = 0;
+        labelItems.forEach((item) => {
+          item.shown = false;
+          item.dom.style.opacity = "0";
+          item.leader.visible = false;
+          item.leader.material.opacity = 0;
+        });
+        dashLines.forEach((line) => {
+          line.material.opacity = 0;
+        });
+        // 等 CSS 淡出大致结束后再彻底隐藏虚线。
+        setTimeout(() => {
+          if (animState !== "exploded") {
+            dashLines.forEach((line) => {
+              line.visible = false;
+            });
+          }
+        }, 320);
+      }
+
+      // === ANIMATION: explode trigger ===
+      function triggerExplode() {
+        if (animState !== "assembled") return;
+        animState = "exploding";
+        animElapsed = 0;
+        updateHintVisibility();
+      }
+
+      // === ANIMATION: collapse trigger ===
+      function triggerCollapse() {
+        if (animState !== "exploded") return;
+        hideLabels();
+        animState = "collapsing";
+        animElapsed = -0.3; // 先给标注留出约 0.3s 的淡出时间。
+        updateHintVisibility();
+      }
+
+      function updateLabelTimeline(dt) {
+        labelTime += dt;
+
+        const dashStart = 0.2;
+        const dashDuration = 0.6;
+        const dashProgress = easeInOutCubic(
+          THREE.MathUtils.clamp((labelTime - dashStart) / dashDuration, 0, 1)
+        );
+        dashLines.forEach((line) => {
+          line.visible = true;
+          line.material.opacity = dashProgress;
+        });
+
+        const labelStart = 0.4;
+        const labelInterval = 0.06;
+        labelItems.forEach((item, index) => {
+          if (!item.shown && labelTime >= labelStart + index * labelInterval) {
+            item.shown = true;
+            item.dom.style.opacity = "1";
+            item.leader.visible = true;
+            item.leader.material.opacity = 1;
+          }
+        });
+      }
+
+      function updateAnimation(dt) {
+        if (animState === "exploding") {
+          animElapsed += dt;
+          parts.forEach((part) => {
+            const local = THREE.MathUtils.clamp(
+              (animElapsed - part.delay) / ANIM_DURATION,
+              0,
+              1
+            );
+            applyPart(part, easeInOutCubic(local));
+          });
+
+          const lastDelay = (parts.length - 1) * STAGGER;
+          if (animElapsed >= ANIM_DURATION + lastDelay) {
+            animState = "exploded";
+            showLabels();
+            updateHintVisibility();
+          }
+        } else if (animState === "collapsing") {
+          animElapsed += dt;
+          if (animElapsed < 0) return;
+
+          const lastDelay = (parts.length - 1) * STAGGER;
+          parts.forEach((part) => {
+            const reverseDelay = lastDelay - part.delay;
+            const local = THREE.MathUtils.clamp(
+              (animElapsed - reverseDelay) / ANIM_DURATION,
+              0,
+              1
+            );
+            // 收起时 e=0 保持爆炸态，e=1 回到组装态。
+            applyPart(part, 1 - easeInOutCubic(local));
+          });
+
+          if (animElapsed >= ANIM_DURATION + lastDelay) {
+            animState = "assembled";
+            updateHintVisibility();
+          }
+        } else if (animState === "exploded") {
+          updateLabelTimeline(dt);
+        }
+      }
+
+      window.addEventListener("keydown", (event) => {
+        if (event.code === "Space") {
+          event.preventDefault();
+          if (animState === "assembled") {
+            triggerExplode();
+          } else if (animState === "exploded") {
+            triggerCollapse();
+          }
+          // 动画进行中按空格被忽略，避免状态混乱。
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        updateCameraFrustum();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        cssRenderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // === RENDER LOOP ===
+      const clock = new THREE.Clock();
+      function render() {
+        requestAnimationFrame(render);
+        const dt = Math.min(clock.getDelta(), 0.1);
+        updateAnimation(dt);
+        controls.update();
+        clampControlsTarget();
+        renderer.render(scene, camera);
+        cssRenderer.render(scene, camera);
+      }
+
+      updateHintVisibility();
+      render();
+    })();
+  </script>
+
+  <!--
+    快门与开孔自检：
+    1. SHUTTER 本体使用 MeshBasicMaterial #4A5568，transparent 为 false，是不透明金属板，
+       未使用 0.08 的爆炸态半透明填充。
+    2. SHUTTER 通过 Shape + holes + ExtrudeGeometry 做出真正的矩形通孔；HEAD_SLOT 在板面
+       左偏（cx = -9），开孔短边 6 与快门长边(X)平行、长边 14 与快门短边(Z)平行。
+    3. TOP SHELL (d) 与 BOTTOM SHELL (g) 均复用 HEAD_SLOT 的 cx/cz/w/h，组装态下三处开孔
+       完全对齐，形成连续磁头通道。
+  -->
+</body>
+</html>
