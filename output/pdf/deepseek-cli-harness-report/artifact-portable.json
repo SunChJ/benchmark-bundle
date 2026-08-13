@@ -1,0 +1,1140 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "DeepSeek CLI Harness 实测对比",
+    "description": "Codex 与 Pi 在 DeepSeek V4 Flash/Pro、high/max 档位下的 one-shot 性能、缓存效率与实现质量对比。",
+    "generatedAt": "2026-08-13T13:30:00Z",
+    "sources": [
+      {
+        "id": "benchmark_analysis",
+        "label": "Normalized benchmark session analysis",
+        "query": {
+          "engine": "node",
+          "id": "analyze-runs-v1",
+          "language": "javascript",
+          "executed_at": "2026-08-13T13:30:00Z",
+          "description": "Parses Codex and Pi JSONL sessions, normalizes token/cache semantics, and joins each completed session to its generated HTML output.",
+          "tables_used": [
+            "runs/20260813193424/*/.benchmark-runtime/pi/sessions/*.jsonl",
+            "runs/20260813195515/*/.benchmark-runtime/{pi,codex}/sessions/**/*.jsonl"
+          ],
+          "filters": [
+            "Exact prompt SHA-256 c96144a8e824835043a65b3efdf287aee7bf35fb1abebd347e951ce0b86d3c52",
+            "One completed session and one final HTML output per case",
+            "Eight harness × model tier × effort cases; no sampling"
+          ],
+          "metric_definitions": [
+            "One-shot duration: first user prompt to final assistant completion for Pi; task_complete duration_ms for Codex; reported in elapsed seconds/minutes.",
+            "Total input tokens: uncached input plus cache-read input. Codex input token counts include cached tokens, so uncached input = input - cached_input.",
+            "Cache hit rate: cached input tokens / total input tokens.",
+            "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset.",
+            "Model calls: assistant usage records. Tool calls: emitted tool invocations."
+          ]
+        }
+      },
+      {
+        "id": "quality_review",
+        "label": "Browser and implementation quality assessment",
+        "query": {
+          "engine": "manual-reviewed",
+          "id": "quality-rubric-v1",
+          "language": "markdown",
+          "executed_at": "2026-08-13T13:30:00Z",
+          "description": "Scores all eight outputs after 1280×720 browser QA of assembled/exploded states, console inspection, transition checks, and source review.",
+          "tables_used": [
+            "analysis/quality-assessment.md",
+            "runs/20260813193424/*/*.html",
+            "runs/20260813195515/*/*.html"
+          ],
+          "filters": [
+            "All eight outputs reviewed",
+            "1280×720 viewport",
+            "Exploded state triggered with Space after page load",
+            "Round-trip exploded → collapsed verified for the top four outputs"
+          ],
+          "metric_definitions": [
+            "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+            "Critical status overrides numeric ranking when a runtime or semantic geometry defect prevents faithful task completion."
+          ]
+        }
+      },
+      {
+        "id": "joined_results",
+        "label": "Joined performance and quality evidence",
+        "query": {
+          "engine": "deterministic-local-join",
+          "id": "case-performance-quality-v1",
+          "language": "javascript+markdown",
+          "executed_at": "2026-08-13T13:30:00Z",
+          "description": "Deterministic case-key join of normalized session metrics and the browser-reviewed quality rubric.",
+          "tables_used": [
+            "analysis/analyze-runs.mjs",
+            "analysis/quality-assessment.md",
+            "analysis/chart-map.md"
+          ],
+          "filters": [
+            "Inner join on exact case identifier",
+            "Eight matched rows; no missing cases and no sampling"
+          ],
+          "metric_definitions": [
+            "Performance fields use the benchmark_analysis definitions.",
+            "Quality fields use the quality_review rubric and critical-defect override."
+          ]
+        }
+      },
+      {
+        "id": "report_query",
+        "label": "Reviewed case-level report query",
+        "query": {
+          "engine": "sqlite",
+          "id": "case-evidence-v1",
+          "language": "sql",
+          "sql": "-- Materialized, reviewed case-level evidence for the report artifact.\n-- Source metrics come from analyze-runs.mjs; quality fields come from quality-assessment.md.\nWITH cases(\n  case_name,\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\n) AS (\n  VALUES\n    ('codex-ds-flash-high', 'Codex', 'Flash', 'high', 1294.126, 21.5688, 2572715, 2552064, 20651, 0.9919730712496332, 32311, 12142, 20, 25, 94, 'Pass', 'Best overall implementation; strong exploded view, minor lower-label crowding.', 'runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html'),\n    ('pi-pro-high', 'Pi', 'Pro', 'high', 1049.822, 17.4970, 673469, 657408, 16061, 0.9761518347540866, 90884, 79122, 8, 7, 91, 'Pass', 'Best visual composition; clear layer separation, some right/bottom label crowding.', 'runs/20260813195515/pi-pro-high/floppy-exploded.html'),\n    ('pi-flash-max', 'Pi', 'Flash', 'max', 845.870, 14.0978, 2624424, 2604032, 20392, 0.9922299140687633, 93837, 69119, 29, 28, 89, 'Pass', 'Strong Flash alternative; correct geometry, but exploded framing clips top/bottom labels.', 'runs/20260813193424/pi-flash-max/floppy-exploded-view.html'),\n    ('codex-ds-pro-high', 'Codex', 'Pro', 'high', 619.162, 10.3194, 756309, 737920, 18389, 0.9756858638466552, 53076, 32482, 15, 14, 85, 'Pass', 'Fastest usable result; correct core geometry, denser labels and slight top clipping.', 'runs/20260813195515/codex-ds-pro-high/index.html'),\n    ('codex-ds-flash-max', 'Codex', 'Flash', 'max', 995.252, 16.5875, 1520846, 1507456, 13390, 0.9911956897674058, 70660, 46039, 23, 22, 78, 'Pass', 'Functionally complete; exploded view is over-zoomed with clipped and misleading labels.', 'runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html'),\n    ('pi-pro-max', 'Pi', 'Pro', 'max', 2076.601, 34.6100, 2912213, 2882176, 30037, 0.9896858505885386, 161557, 133661, 20, 19, 64, 'Critical', 'Exploded geometry completes, but label animation continuously throws on undefined .style.', 'runs/20260813195515/pi-pro-max/floppy-blueprint.html'),\n    ('codex-ds-pro-max', 'Codex', 'Pro', 'max', 1902.947, 31.7158, 3529832, 3419008, 110824, 0.9686036049307729, 135505, 108138, 23, 32, 53, 'Critical', 'Semantic geometry failure: extruded shell remains in XY and the floppy stands vertically.', 'runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html'),\n    ('pi-flash-high', 'Pi', 'Flash', 'high', 1247.667, 20.7945, 3801287, 3781504, 19783, 0.9947957099792780, 102333, 79451, 41, 40, 52, 'Critical', 'Semantic geometry failure: extruded shell remains vertical despite extensive self-tests.', 'runs/20260813193424/pi-flash-high/index.html')\n)\nSELECT\n  case_name AS \"case\",\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\nFROM cases;\n",
+          "executed_at": "2026-08-13T13:30:00Z",
+          "description": "Returns the eight reviewed case-level benchmark rows used by the native charts and detail table.",
+          "tables_used": [
+            "analysis/report-source.sql",
+            "analysis/analyze-runs.mjs",
+            "analysis/quality-assessment.md"
+          ],
+          "filters": [
+            "Exact prompt SHA-256 c96144a8e824835043a65b3efdf287aee7bf35fb1abebd347e951ce0b86d3c52",
+            "Eight completed cases; no sampling",
+            "Deterministic join on exact case identifier"
+          ],
+          "metric_definitions": [
+            "One-shot duration is elapsed task completion time in seconds/minutes.",
+            "Total input tokens = cached input + uncached input.",
+            "Cache hit rate = cached input / total input.",
+            "Output tokens include reasoning; reasoning_output_tokens is the reported subset.",
+            "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+            "Critical status marks a runtime or semantic geometry defect that overrides numeric ranking."
+          ]
+        }
+      }
+    ],
+    "cards": [],
+    "charts": [
+      {
+        "id": "duration_chart",
+        "title": "One-shot completion time",
+        "subtitle": "codex-ds-pro-high finishes in 10.3 minutes; Pro/max stretches past 31 minutes in both harnesses.",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "duration_cases",
+        "sourceId": "report_query",
+        "encodings": {
+          "x": {
+            "field": "case",
+            "type": "nominal",
+            "label": "Case"
+          },
+          "y": {
+            "field": "duration_min",
+            "type": "quantitative",
+            "label": "Elapsed time",
+            "unit": "min"
+          },
+          "tooltip": [
+            {
+              "field": "harness",
+              "type": "nominal",
+              "label": "Harness"
+            },
+            {
+              "field": "model_tier",
+              "type": "nominal",
+              "label": "Model tier"
+            },
+            {
+              "field": "effort",
+              "type": "nominal",
+              "label": "Effort"
+            },
+            {
+              "field": "duration_min",
+              "type": "quantitative",
+              "label": "Minutes",
+              "format": "number"
+            }
+          ]
+        },
+        "yAxisTitle": "Minutes",
+        "valueFormat": "number",
+        "maxRows": 8,
+        "layout": "full"
+      },
+      {
+        "id": "cache_chart",
+        "title": "Input token cache composition",
+        "subtitle": "Every run exceeds 96.8% cache hit, but total input still ranges from 0.67M to 3.80M tokens.",
+        "showDescription": true,
+        "type": "horizontalStackedBar100",
+        "dataset": "duration_cases",
+        "sourceId": "report_query",
+        "encodings": {
+          "x": {
+            "field": "case",
+            "type": "nominal",
+            "label": "Case"
+          },
+          "y": {
+            "fields": [
+              "cached_input_tokens",
+              "uncached_input_tokens"
+            ],
+            "type": "quantitative",
+            "label": "Input share"
+          },
+          "tooltip": [
+            {
+              "field": "cache_hit_rate",
+              "type": "quantitative",
+              "label": "Cache hit",
+              "format": "percent"
+            },
+            {
+              "field": "cached_input_tokens",
+              "type": "quantitative",
+              "label": "Cached input",
+              "format": "compact"
+            },
+            {
+              "field": "uncached_input_tokens",
+              "type": "quantitative",
+              "label": "Uncached input",
+              "format": "compact"
+            },
+            {
+              "field": "total_input_tokens",
+              "type": "quantitative",
+              "label": "Total input",
+              "format": "compact"
+            }
+          ]
+        },
+        "yAxisTitle": "Share of input tokens",
+        "valueFormat": "percent",
+        "maxRows": 8,
+        "layout": "full"
+      },
+      {
+        "id": "quality_chart",
+        "title": "Implementation quality score",
+        "subtitle": "Five outputs are usable; three contain critical runtime or semantic-geometry defects.",
+        "showDescription": true,
+        "type": "horizontalBar",
+        "dataset": "quality_cases",
+        "sourceId": "report_query",
+        "encodings": {
+          "x": {
+            "field": "case",
+            "type": "nominal",
+            "label": "Case"
+          },
+          "y": {
+            "field": "quality_score",
+            "type": "quantitative",
+            "label": "Quality score",
+            "unit": "/100"
+          },
+          "tooltip": [
+            {
+              "field": "critical_status",
+              "type": "nominal",
+              "label": "Critical status"
+            },
+            {
+              "field": "observed_result",
+              "type": "text",
+              "label": "Browser finding"
+            }
+          ]
+        },
+        "yAxisTitle": "Score / 100",
+        "valueFormat": "number",
+        "maxRows": 8,
+        "layout": "full"
+      },
+      {
+        "id": "frontier_chart",
+        "title": "Completion time vs implementation quality",
+        "subtitle": "The practical frontier is codex Pro/high for throughput, Pi Flash/max for balance, Pi Pro/high for visuals, and codex Flash/high for maximum quality.",
+        "showDescription": true,
+        "type": "scatter",
+        "dataset": "cases",
+        "sourceId": "report_query",
+        "encodings": {
+          "x": {
+            "field": "duration_min",
+            "type": "quantitative",
+            "label": "Elapsed time",
+            "unit": "min"
+          },
+          "y": {
+            "field": "quality_score",
+            "type": "quantitative",
+            "label": "Quality score",
+            "unit": "/100"
+          },
+          "color": {
+            "field": "harness",
+            "type": "nominal",
+            "label": "Harness"
+          },
+          "label": {
+            "field": "case",
+            "type": "text",
+            "label": "Case"
+          },
+          "tooltip": [
+            {
+              "field": "case",
+              "type": "nominal",
+              "label": "Case"
+            },
+            {
+              "field": "model_tier",
+              "type": "nominal",
+              "label": "Model tier"
+            },
+            {
+              "field": "effort",
+              "type": "nominal",
+              "label": "Effort"
+            },
+            {
+              "field": "critical_status",
+              "type": "nominal",
+              "label": "Critical status"
+            },
+            {
+              "field": "total_input_tokens",
+              "type": "quantitative",
+              "label": "Total input",
+              "format": "compact"
+            }
+          ]
+        },
+        "xAxisTitle": "One-shot completion time (min)",
+        "yAxisTitle": "Quality score / 100",
+        "maxRows": 8,
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "case_detail",
+        "title": "Case-level metrics and browser findings",
+        "subtitle": "Exact session totals; reasoning tokens are a subset of output tokens.",
+        "showDescription": true,
+        "dataset": "cases",
+        "sourceId": "report_query",
+        "density": "compact",
+        "layout": "full",
+        "defaultSort": {
+          "field": "quality_score",
+          "direction": "desc"
+        },
+        "columns": [
+          {
+            "field": "case",
+            "label": "Case",
+            "type": "text"
+          },
+          {
+            "field": "harness",
+            "label": "Harness",
+            "type": "text"
+          },
+          {
+            "field": "model_tier",
+            "label": "Tier",
+            "type": "text"
+          },
+          {
+            "field": "effort",
+            "label": "Effort",
+            "type": "text"
+          },
+          {
+            "field": "duration_min",
+            "label": "Minutes",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "total_input_tokens",
+            "label": "Total input",
+            "type": "number",
+            "format": "compact",
+            "align": "right"
+          },
+          {
+            "field": "cached_input_tokens",
+            "label": "Cached input",
+            "type": "number",
+            "format": "compact",
+            "align": "right"
+          },
+          {
+            "field": "uncached_input_tokens",
+            "label": "Uncached input",
+            "type": "number",
+            "format": "compact",
+            "align": "right"
+          },
+          {
+            "field": "cache_hit_rate",
+            "label": "Cache hit",
+            "type": "percent",
+            "format": "percent",
+            "align": "right"
+          },
+          {
+            "field": "output_tokens",
+            "label": "Output",
+            "type": "number",
+            "format": "compact",
+            "align": "right"
+          },
+          {
+            "field": "reasoning_output_tokens",
+            "label": "Reasoning",
+            "type": "number",
+            "format": "compact",
+            "align": "right"
+          },
+          {
+            "field": "model_calls",
+            "label": "Model calls",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "tool_calls",
+            "label": "Tool calls",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "quality_score",
+            "label": "Quality",
+            "type": "number",
+            "format": "number",
+            "align": "right"
+          },
+          {
+            "field": "critical_status",
+            "label": "Status",
+            "type": "text"
+          },
+          {
+            "field": "observed_result",
+            "label": "Browser finding",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# DeepSeek CLI Harness 实测对比"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "body": "## Technical Summary\n\n同一 prompt、8 个单次样本下，**codex-ds-pro-high** 是默认吞吐首选：10.3 分钟完成且实现可用；**codex-ds-flash-high** 以 94/100 提供最高实现质量，但耗时 21.6 分钟。`max` 不是稳定升级：两组 Pro/max 都超过 31 分钟且均出现关键缺陷。缓存命中率整体很高（96.86%–99.48%），但无法抵消多轮完整上下文重放造成的总输入膨胀。"
+      },
+      {
+        "id": "duration_section",
+        "type": "markdown",
+        "sourceId": "benchmark_analysis",
+        "body": "## One-shot 时间：Pro/high 是唯一清晰的速度赢家\n\ncodex-ds-pro-high 用 10:19 完成，比 pi-pro-high 的 17:30 快约 41%。Flash/max 在两个 harness 中都比 Flash/high 快；相反，Pro/max 同时变慢到 31:43–34:37，说明提高 effort 会显著放大循环与验证成本，却没有稳定质量收益。"
+      },
+      {
+        "id": "duration_visual",
+        "type": "chart",
+        "chartId": "duration_chart",
+        "layout": "full"
+      },
+      {
+        "id": "cache_section",
+        "type": "markdown",
+        "sourceId": "benchmark_analysis",
+        "body": "## 缓存：命中率高，但循环体量才是主导变量\n\n8 个 case 的缓存命中率都很高；真正拉开资源消耗的是重复模型调用后的总输入量。pi-pro-high 只用了 0.67M 总输入和 8 次模型调用，而 pi-flash-high 即使命中率最高，仍累计 3.80M 输入和 41 次调用。高 cache hit 不等于高效率，缓存 token 也不应视为零成本。"
+      },
+      {
+        "id": "cache_visual",
+        "type": "chart",
+        "chartId": "cache_chart",
+        "layout": "full"
+      },
+      {
+        "id": "quality_section",
+        "type": "markdown",
+        "sourceId": "quality_review",
+        "body": "## 实现质量：harness 差异小于具体轨迹差异\n\n最佳实现是 codex-ds-flash-high（94），最佳视觉构图是 pi-pro-high（91）。pi-flash-high 与 codex-ds-pro-max 都把 ExtrudeGeometry 留在 XY 平面，使软盘竖立；pi-pro-max 在标签淡入路径持续触发 undefined `.style`。这些缺陷跨 harness、跨档位出现，说明结果更受具体执行轨迹与验证策略影响。"
+      },
+      {
+        "id": "quality_visual",
+        "type": "chart",
+        "chartId": "quality_chart",
+        "layout": "full"
+      },
+      {
+        "id": "frontier_section",
+        "type": "markdown",
+        "sourceId": "joined_results",
+        "body": "## 速度—质量前沿：按目标选档，不做单一总榜\n\n吞吐优先选 codex Pro/high；平衡速度与质量可选 Pi Flash/max；视觉表现优先选 Pi Pro/high；追求最高实现质量选 codex Flash/high。其余 4 个点要么被这些选择支配，要么存在关键缺陷。"
+      },
+      {
+        "id": "frontier_visual",
+        "type": "chart",
+        "chartId": "frontier_chart",
+        "layout": "full"
+      },
+      {
+        "id": "detail_section",
+        "type": "markdown",
+        "sourceId": "joined_results",
+        "body": "## Case 级证据\n\n下表保留完整 token、调用次数、质量分和浏览器发现，便于按 harness、模型档位或 effort 继续复核。"
+      },
+      {
+        "id": "detail_table",
+        "type": "table",
+        "tableId": "case_detail",
+        "layout": "full"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## Scope, definitions, and methodology\n\n样本限定为同一 prompt hash 的 8 次 one-shot 完成，每个组合仅 1 次。时间按端到端任务完成口径；Codex 的输入数包含 cached input，因此统一换算为 `uncached = input - cached`。质量采用 30/30/25/15 rubric：功能正确性、几何/规格、视觉构图、验证/可维护性；关键运行时或语义几何缺陷覆盖数值排名。浏览器 QA 使用 1280×720 视口，检查 assembled/exploded、控制台和主要转场；前四名额外完成 exploded→collapsed 往返。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## Limitations and robustness\n\n这是每格 n=1 的定向基准，不能估计方差或显著性；结果受瞬时服务负载和 agent 轨迹影响。Pi 会话没有 Codex 同口径的 TTFT，因此未做跨 harness 首 token 比较。Codex 日志未提供可比成本字段，所以报告比较 token 体量而非美元成本。质量分含人工视觉判断，但关键缺陷均由运行时错误或明确的几何轴向证据支持。"
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## Recommended operating policy\n\n1. 默认配置：`Codex + DeepSeek V4 Pro + high`。\n2. 视觉质量敏感：优先 `Pi + Pro + high`；若接受更长耗时并追求总体完成度，选 `Codex + Flash + high`。\n3. 禁用自动升级到 Pro/max；至少在本任务类型上，它显著更慢且失败率为 100%。\n4. 在 harness 回归测试中增加参考视图/轴向断言、CSS2D 标签生命周期测试和 viewport framing 检查；仅靠语法、像素往返或几何数量断言不足。"
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n下一轮应对每格至少重复 5 次并记录 p50/p90、失败率、可比 TTFT 与真实计费；再加入 2–3 类任务（纯代码、UI 还原、调试修复）验证当前结论能否跨任务泛化。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-13T13:30:00Z",
+    "status": "ready",
+    "datasets": {
+      "cases": [
+        {
+          "case": "codex-ds-flash-high",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1294.126,
+          "duration_min": 21.5688,
+          "total_input_tokens": 2572715,
+          "cached_input_tokens": 2552064,
+          "uncached_input_tokens": 20651,
+          "cache_hit_rate": 0.9919730712496332,
+          "output_tokens": 32311,
+          "reasoning_output_tokens": 12142,
+          "model_calls": 20,
+          "tool_calls": 25,
+          "quality_score": 94,
+          "critical_status": "Pass",
+          "observed_result": "Best overall implementation; strong exploded view, minor lower-label crowding.",
+          "output_path": "runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "pi-pro-high",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 1049.822,
+          "duration_min": 17.497,
+          "total_input_tokens": 673469,
+          "cached_input_tokens": 657408,
+          "uncached_input_tokens": 16061,
+          "cache_hit_rate": 0.9761518347540866,
+          "output_tokens": 90884,
+          "reasoning_output_tokens": 79122,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "quality_score": 91,
+          "critical_status": "Pass",
+          "observed_result": "Best visual composition; clear layer separation, some right/bottom label crowding.",
+          "output_path": "runs/20260813195515/pi-pro-high/floppy-exploded.html"
+        },
+        {
+          "case": "pi-flash-max",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 845.87,
+          "duration_min": 14.0978,
+          "total_input_tokens": 2624424,
+          "cached_input_tokens": 2604032,
+          "uncached_input_tokens": 20392,
+          "cache_hit_rate": 0.9922299140687633,
+          "output_tokens": 93837,
+          "reasoning_output_tokens": 69119,
+          "model_calls": 29,
+          "tool_calls": 28,
+          "quality_score": 89,
+          "critical_status": "Pass",
+          "observed_result": "Strong Flash alternative; correct geometry, but exploded framing clips top/bottom labels.",
+          "output_path": "runs/20260813193424/pi-flash-max/floppy-exploded-view.html"
+        },
+        {
+          "case": "codex-ds-pro-high",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 619.162,
+          "duration_min": 10.3194,
+          "total_input_tokens": 756309,
+          "cached_input_tokens": 737920,
+          "uncached_input_tokens": 18389,
+          "cache_hit_rate": 0.9756858638466552,
+          "output_tokens": 53076,
+          "reasoning_output_tokens": 32482,
+          "model_calls": 15,
+          "tool_calls": 14,
+          "quality_score": 85,
+          "critical_status": "Pass",
+          "observed_result": "Fastest usable result; correct core geometry, denser labels and slight top clipping.",
+          "output_path": "runs/20260813195515/codex-ds-pro-high/index.html"
+        },
+        {
+          "case": "codex-ds-flash-max",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 995.252,
+          "duration_min": 16.5875,
+          "total_input_tokens": 1520846,
+          "cached_input_tokens": 1507456,
+          "uncached_input_tokens": 13390,
+          "cache_hit_rate": 0.9911956897674058,
+          "output_tokens": 70660,
+          "reasoning_output_tokens": 46039,
+          "model_calls": 23,
+          "tool_calls": 22,
+          "quality_score": 78,
+          "critical_status": "Pass",
+          "observed_result": "Functionally complete; exploded view is over-zoomed with clipped and misleading labels.",
+          "output_path": "runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html"
+        },
+        {
+          "case": "pi-pro-max",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 2076.601,
+          "duration_min": 34.61,
+          "total_input_tokens": 2912213,
+          "cached_input_tokens": 2882176,
+          "uncached_input_tokens": 30037,
+          "cache_hit_rate": 0.9896858505885386,
+          "output_tokens": 161557,
+          "reasoning_output_tokens": 133661,
+          "model_calls": 20,
+          "tool_calls": 19,
+          "quality_score": 64,
+          "critical_status": "Critical",
+          "observed_result": "Exploded geometry completes, but label animation continuously throws on undefined .style.",
+          "output_path": "runs/20260813195515/pi-pro-max/floppy-blueprint.html"
+        },
+        {
+          "case": "codex-ds-pro-max",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 1902.947,
+          "duration_min": 31.7158,
+          "total_input_tokens": 3529832,
+          "cached_input_tokens": 3419008,
+          "uncached_input_tokens": 110824,
+          "cache_hit_rate": 0.9686036049307729,
+          "output_tokens": 135505,
+          "reasoning_output_tokens": 108138,
+          "model_calls": 23,
+          "tool_calls": 32,
+          "quality_score": 53,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains in XY and the floppy stands vertically.",
+          "output_path": "runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "pi-flash-high",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1247.667,
+          "duration_min": 20.7945,
+          "total_input_tokens": 3801287,
+          "cached_input_tokens": 3781504,
+          "uncached_input_tokens": 19783,
+          "cache_hit_rate": 0.994795709979278,
+          "output_tokens": 102333,
+          "reasoning_output_tokens": 79451,
+          "model_calls": 41,
+          "tool_calls": 40,
+          "quality_score": 52,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains vertical despite extensive self-tests.",
+          "output_path": "runs/20260813193424/pi-flash-high/index.html"
+        }
+      ],
+      "duration_cases": [
+        {
+          "case": "codex-ds-pro-high",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 619.162,
+          "duration_min": 10.3194,
+          "total_input_tokens": 756309,
+          "cached_input_tokens": 737920,
+          "uncached_input_tokens": 18389,
+          "cache_hit_rate": 0.9756858638466552,
+          "output_tokens": 53076,
+          "reasoning_output_tokens": 32482,
+          "model_calls": 15,
+          "tool_calls": 14,
+          "quality_score": 85,
+          "critical_status": "Pass",
+          "observed_result": "Fastest usable result; correct core geometry, denser labels and slight top clipping.",
+          "output_path": "runs/20260813195515/codex-ds-pro-high/index.html"
+        },
+        {
+          "case": "pi-flash-max",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 845.87,
+          "duration_min": 14.0978,
+          "total_input_tokens": 2624424,
+          "cached_input_tokens": 2604032,
+          "uncached_input_tokens": 20392,
+          "cache_hit_rate": 0.9922299140687633,
+          "output_tokens": 93837,
+          "reasoning_output_tokens": 69119,
+          "model_calls": 29,
+          "tool_calls": 28,
+          "quality_score": 89,
+          "critical_status": "Pass",
+          "observed_result": "Strong Flash alternative; correct geometry, but exploded framing clips top/bottom labels.",
+          "output_path": "runs/20260813193424/pi-flash-max/floppy-exploded-view.html"
+        },
+        {
+          "case": "codex-ds-flash-max",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 995.252,
+          "duration_min": 16.5875,
+          "total_input_tokens": 1520846,
+          "cached_input_tokens": 1507456,
+          "uncached_input_tokens": 13390,
+          "cache_hit_rate": 0.9911956897674058,
+          "output_tokens": 70660,
+          "reasoning_output_tokens": 46039,
+          "model_calls": 23,
+          "tool_calls": 22,
+          "quality_score": 78,
+          "critical_status": "Pass",
+          "observed_result": "Functionally complete; exploded view is over-zoomed with clipped and misleading labels.",
+          "output_path": "runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html"
+        },
+        {
+          "case": "pi-pro-high",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 1049.822,
+          "duration_min": 17.497,
+          "total_input_tokens": 673469,
+          "cached_input_tokens": 657408,
+          "uncached_input_tokens": 16061,
+          "cache_hit_rate": 0.9761518347540866,
+          "output_tokens": 90884,
+          "reasoning_output_tokens": 79122,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "quality_score": 91,
+          "critical_status": "Pass",
+          "observed_result": "Best visual composition; clear layer separation, some right/bottom label crowding.",
+          "output_path": "runs/20260813195515/pi-pro-high/floppy-exploded.html"
+        },
+        {
+          "case": "pi-flash-high",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1247.667,
+          "duration_min": 20.7945,
+          "total_input_tokens": 3801287,
+          "cached_input_tokens": 3781504,
+          "uncached_input_tokens": 19783,
+          "cache_hit_rate": 0.994795709979278,
+          "output_tokens": 102333,
+          "reasoning_output_tokens": 79451,
+          "model_calls": 41,
+          "tool_calls": 40,
+          "quality_score": 52,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains vertical despite extensive self-tests.",
+          "output_path": "runs/20260813193424/pi-flash-high/index.html"
+        },
+        {
+          "case": "codex-ds-flash-high",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1294.126,
+          "duration_min": 21.5688,
+          "total_input_tokens": 2572715,
+          "cached_input_tokens": 2552064,
+          "uncached_input_tokens": 20651,
+          "cache_hit_rate": 0.9919730712496332,
+          "output_tokens": 32311,
+          "reasoning_output_tokens": 12142,
+          "model_calls": 20,
+          "tool_calls": 25,
+          "quality_score": 94,
+          "critical_status": "Pass",
+          "observed_result": "Best overall implementation; strong exploded view, minor lower-label crowding.",
+          "output_path": "runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "codex-ds-pro-max",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 1902.947,
+          "duration_min": 31.7158,
+          "total_input_tokens": 3529832,
+          "cached_input_tokens": 3419008,
+          "uncached_input_tokens": 110824,
+          "cache_hit_rate": 0.9686036049307729,
+          "output_tokens": 135505,
+          "reasoning_output_tokens": 108138,
+          "model_calls": 23,
+          "tool_calls": 32,
+          "quality_score": 53,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains in XY and the floppy stands vertically.",
+          "output_path": "runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "pi-pro-max",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 2076.601,
+          "duration_min": 34.61,
+          "total_input_tokens": 2912213,
+          "cached_input_tokens": 2882176,
+          "uncached_input_tokens": 30037,
+          "cache_hit_rate": 0.9896858505885386,
+          "output_tokens": 161557,
+          "reasoning_output_tokens": 133661,
+          "model_calls": 20,
+          "tool_calls": 19,
+          "quality_score": 64,
+          "critical_status": "Critical",
+          "observed_result": "Exploded geometry completes, but label animation continuously throws on undefined .style.",
+          "output_path": "runs/20260813195515/pi-pro-max/floppy-blueprint.html"
+        }
+      ],
+      "quality_cases": [
+        {
+          "case": "codex-ds-flash-high",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1294.126,
+          "duration_min": 21.5688,
+          "total_input_tokens": 2572715,
+          "cached_input_tokens": 2552064,
+          "uncached_input_tokens": 20651,
+          "cache_hit_rate": 0.9919730712496332,
+          "output_tokens": 32311,
+          "reasoning_output_tokens": 12142,
+          "model_calls": 20,
+          "tool_calls": 25,
+          "quality_score": 94,
+          "critical_status": "Pass",
+          "observed_result": "Best overall implementation; strong exploded view, minor lower-label crowding.",
+          "output_path": "runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "pi-pro-high",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 1049.822,
+          "duration_min": 17.497,
+          "total_input_tokens": 673469,
+          "cached_input_tokens": 657408,
+          "uncached_input_tokens": 16061,
+          "cache_hit_rate": 0.9761518347540866,
+          "output_tokens": 90884,
+          "reasoning_output_tokens": 79122,
+          "model_calls": 8,
+          "tool_calls": 7,
+          "quality_score": 91,
+          "critical_status": "Pass",
+          "observed_result": "Best visual composition; clear layer separation, some right/bottom label crowding.",
+          "output_path": "runs/20260813195515/pi-pro-high/floppy-exploded.html"
+        },
+        {
+          "case": "pi-flash-max",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 845.87,
+          "duration_min": 14.0978,
+          "total_input_tokens": 2624424,
+          "cached_input_tokens": 2604032,
+          "uncached_input_tokens": 20392,
+          "cache_hit_rate": 0.9922299140687633,
+          "output_tokens": 93837,
+          "reasoning_output_tokens": 69119,
+          "model_calls": 29,
+          "tool_calls": 28,
+          "quality_score": 89,
+          "critical_status": "Pass",
+          "observed_result": "Strong Flash alternative; correct geometry, but exploded framing clips top/bottom labels.",
+          "output_path": "runs/20260813193424/pi-flash-max/floppy-exploded-view.html"
+        },
+        {
+          "case": "codex-ds-pro-high",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "high",
+          "duration_s": 619.162,
+          "duration_min": 10.3194,
+          "total_input_tokens": 756309,
+          "cached_input_tokens": 737920,
+          "uncached_input_tokens": 18389,
+          "cache_hit_rate": 0.9756858638466552,
+          "output_tokens": 53076,
+          "reasoning_output_tokens": 32482,
+          "model_calls": 15,
+          "tool_calls": 14,
+          "quality_score": 85,
+          "critical_status": "Pass",
+          "observed_result": "Fastest usable result; correct core geometry, denser labels and slight top clipping.",
+          "output_path": "runs/20260813195515/codex-ds-pro-high/index.html"
+        },
+        {
+          "case": "codex-ds-flash-max",
+          "harness": "Codex",
+          "model_tier": "Flash",
+          "effort": "max",
+          "duration_s": 995.252,
+          "duration_min": 16.5875,
+          "total_input_tokens": 1520846,
+          "cached_input_tokens": 1507456,
+          "uncached_input_tokens": 13390,
+          "cache_hit_rate": 0.9911956897674058,
+          "output_tokens": 70660,
+          "reasoning_output_tokens": 46039,
+          "model_calls": 23,
+          "tool_calls": 22,
+          "quality_score": 78,
+          "critical_status": "Pass",
+          "observed_result": "Functionally complete; exploded view is over-zoomed with clipped and misleading labels.",
+          "output_path": "runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html"
+        },
+        {
+          "case": "pi-pro-max",
+          "harness": "Pi",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 2076.601,
+          "duration_min": 34.61,
+          "total_input_tokens": 2912213,
+          "cached_input_tokens": 2882176,
+          "uncached_input_tokens": 30037,
+          "cache_hit_rate": 0.9896858505885386,
+          "output_tokens": 161557,
+          "reasoning_output_tokens": 133661,
+          "model_calls": 20,
+          "tool_calls": 19,
+          "quality_score": 64,
+          "critical_status": "Critical",
+          "observed_result": "Exploded geometry completes, but label animation continuously throws on undefined .style.",
+          "output_path": "runs/20260813195515/pi-pro-max/floppy-blueprint.html"
+        },
+        {
+          "case": "codex-ds-pro-max",
+          "harness": "Codex",
+          "model_tier": "Pro",
+          "effort": "max",
+          "duration_s": 1902.947,
+          "duration_min": 31.7158,
+          "total_input_tokens": 3529832,
+          "cached_input_tokens": 3419008,
+          "uncached_input_tokens": 110824,
+          "cache_hit_rate": 0.9686036049307729,
+          "output_tokens": 135505,
+          "reasoning_output_tokens": 108138,
+          "model_calls": 23,
+          "tool_calls": 32,
+          "quality_score": 53,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains in XY and the floppy stands vertically.",
+          "output_path": "runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html"
+        },
+        {
+          "case": "pi-flash-high",
+          "harness": "Pi",
+          "model_tier": "Flash",
+          "effort": "high",
+          "duration_s": 1247.667,
+          "duration_min": 20.7945,
+          "total_input_tokens": 3801287,
+          "cached_input_tokens": 3781504,
+          "uncached_input_tokens": 19783,
+          "cache_hit_rate": 0.994795709979278,
+          "output_tokens": 102333,
+          "reasoning_output_tokens": 79451,
+          "model_calls": 41,
+          "tool_calls": 40,
+          "quality_score": 52,
+          "critical_status": "Critical",
+          "observed_result": "Semantic geometry failure: extruded shell remains vertical despite extensive self-tests.",
+          "output_path": "runs/20260813193424/pi-flash-high/index.html"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "benchmark_analysis",
+      "label": "Normalized benchmark session analysis",
+      "query": {
+        "engine": "node",
+        "id": "analyze-runs-v1",
+        "language": "javascript",
+        "executed_at": "2026-08-13T13:30:00Z",
+        "description": "Parses Codex and Pi JSONL sessions, normalizes token/cache semantics, and joins each completed session to its generated HTML output.",
+        "tables_used": [
+          "runs/20260813193424/*/.benchmark-runtime/pi/sessions/*.jsonl",
+          "runs/20260813195515/*/.benchmark-runtime/{pi,codex}/sessions/**/*.jsonl"
+        ],
+        "filters": [
+          "Exact prompt SHA-256 c96144a8e824835043a65b3efdf287aee7bf35fb1abebd347e951ce0b86d3c52",
+          "One completed session and one final HTML output per case",
+          "Eight harness × model tier × effort cases; no sampling"
+        ],
+        "metric_definitions": [
+          "One-shot duration: first user prompt to final assistant completion for Pi; task_complete duration_ms for Codex; reported in elapsed seconds/minutes.",
+          "Total input tokens: uncached input plus cache-read input. Codex input token counts include cached tokens, so uncached input = input - cached_input.",
+          "Cache hit rate: cached input tokens / total input tokens.",
+          "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset.",
+          "Model calls: assistant usage records. Tool calls: emitted tool invocations."
+        ]
+      }
+    },
+    {
+      "id": "quality_review",
+      "label": "Browser and implementation quality assessment",
+      "query": {
+        "engine": "manual-reviewed",
+        "id": "quality-rubric-v1",
+        "language": "markdown",
+        "executed_at": "2026-08-13T13:30:00Z",
+        "description": "Scores all eight outputs after 1280×720 browser QA of assembled/exploded states, console inspection, transition checks, and source review.",
+        "tables_used": [
+          "analysis/quality-assessment.md",
+          "runs/20260813193424/*/*.html",
+          "runs/20260813195515/*/*.html"
+        ],
+        "filters": [
+          "All eight outputs reviewed",
+          "1280×720 viewport",
+          "Exploded state triggered with Space after page load",
+          "Round-trip exploded → collapsed verified for the top four outputs"
+        ],
+        "metric_definitions": [
+          "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+          "Critical status overrides numeric ranking when a runtime or semantic geometry defect prevents faithful task completion."
+        ]
+      }
+    },
+    {
+      "id": "joined_results",
+      "label": "Joined performance and quality evidence",
+      "query": {
+        "engine": "deterministic-local-join",
+        "id": "case-performance-quality-v1",
+        "language": "javascript+markdown",
+        "executed_at": "2026-08-13T13:30:00Z",
+        "description": "Deterministic case-key join of normalized session metrics and the browser-reviewed quality rubric.",
+        "tables_used": [
+          "analysis/analyze-runs.mjs",
+          "analysis/quality-assessment.md",
+          "analysis/chart-map.md"
+        ],
+        "filters": [
+          "Inner join on exact case identifier",
+          "Eight matched rows; no missing cases and no sampling"
+        ],
+        "metric_definitions": [
+          "Performance fields use the benchmark_analysis definitions.",
+          "Quality fields use the quality_review rubric and critical-defect override."
+        ]
+      }
+    },
+    {
+      "id": "report_query",
+      "label": "Reviewed case-level report query",
+      "query": {
+        "engine": "sqlite",
+        "id": "case-evidence-v1",
+        "language": "sql",
+        "sql": "-- Materialized, reviewed case-level evidence for the report artifact.\n-- Source metrics come from analyze-runs.mjs; quality fields come from quality-assessment.md.\nWITH cases(\n  case_name,\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\n) AS (\n  VALUES\n    ('codex-ds-flash-high', 'Codex', 'Flash', 'high', 1294.126, 21.5688, 2572715, 2552064, 20651, 0.9919730712496332, 32311, 12142, 20, 25, 94, 'Pass', 'Best overall implementation; strong exploded view, minor lower-label crowding.', 'runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html'),\n    ('pi-pro-high', 'Pi', 'Pro', 'high', 1049.822, 17.4970, 673469, 657408, 16061, 0.9761518347540866, 90884, 79122, 8, 7, 91, 'Pass', 'Best visual composition; clear layer separation, some right/bottom label crowding.', 'runs/20260813195515/pi-pro-high/floppy-exploded.html'),\n    ('pi-flash-max', 'Pi', 'Flash', 'max', 845.870, 14.0978, 2624424, 2604032, 20392, 0.9922299140687633, 93837, 69119, 29, 28, 89, 'Pass', 'Strong Flash alternative; correct geometry, but exploded framing clips top/bottom labels.', 'runs/20260813193424/pi-flash-max/floppy-exploded-view.html'),\n    ('codex-ds-pro-high', 'Codex', 'Pro', 'high', 619.162, 10.3194, 756309, 737920, 18389, 0.9756858638466552, 53076, 32482, 15, 14, 85, 'Pass', 'Fastest usable result; correct core geometry, denser labels and slight top clipping.', 'runs/20260813195515/codex-ds-pro-high/index.html'),\n    ('codex-ds-flash-max', 'Codex', 'Flash', 'max', 995.252, 16.5875, 1520846, 1507456, 13390, 0.9911956897674058, 70660, 46039, 23, 22, 78, 'Pass', 'Functionally complete; exploded view is over-zoomed with clipped and misleading labels.', 'runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html'),\n    ('pi-pro-max', 'Pi', 'Pro', 'max', 2076.601, 34.6100, 2912213, 2882176, 30037, 0.9896858505885386, 161557, 133661, 20, 19, 64, 'Critical', 'Exploded geometry completes, but label animation continuously throws on undefined .style.', 'runs/20260813195515/pi-pro-max/floppy-blueprint.html'),\n    ('codex-ds-pro-max', 'Codex', 'Pro', 'max', 1902.947, 31.7158, 3529832, 3419008, 110824, 0.9686036049307729, 135505, 108138, 23, 32, 53, 'Critical', 'Semantic geometry failure: extruded shell remains in XY and the floppy stands vertically.', 'runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html'),\n    ('pi-flash-high', 'Pi', 'Flash', 'high', 1247.667, 20.7945, 3801287, 3781504, 19783, 0.9947957099792780, 102333, 79451, 41, 40, 52, 'Critical', 'Semantic geometry failure: extruded shell remains vertical despite extensive self-tests.', 'runs/20260813193424/pi-flash-high/index.html')\n)\nSELECT\n  case_name AS \"case\",\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\nFROM cases;\n",
+        "executed_at": "2026-08-13T13:30:00Z",
+        "description": "Returns the eight reviewed case-level benchmark rows used by the native charts and detail table.",
+        "tables_used": [
+          "analysis/report-source.sql",
+          "analysis/analyze-runs.mjs",
+          "analysis/quality-assessment.md"
+        ],
+        "filters": [
+          "Exact prompt SHA-256 c96144a8e824835043a65b3efdf287aee7bf35fb1abebd347e951ce0b86d3c52",
+          "Eight completed cases; no sampling",
+          "Deterministic join on exact case identifier"
+        ],
+        "metric_definitions": [
+          "One-shot duration is elapsed task completion time in seconds/minutes.",
+          "Total input tokens = cached input + uncached input.",
+          "Cache hit rate = cached input / total input.",
+          "Output tokens include reasoning; reasoning_output_tokens is the reported subset.",
+          "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
+          "Critical status marks a runtime or semantic geometry defect that overrides numeric ranking."
+        ]
+      }
+    }
+  ]
+}
