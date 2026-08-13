@@ -1,3 +1,15 @@
 .DS_Store
+
+# Preserve benchmark outputs and session evidence, not rebuildable runtime state.
 runs/.current
-runs/**/.benchmark-runtime/
+runs/**/.benchmark-runtime/cache/
+runs/**/.benchmark-runtime/tmp/
+runs/**/.benchmark-runtime/config/
+runs/**/.benchmark-runtime/data/
+runs/**/.benchmark-runtime/runtime/
+runs/**/.benchmark-runtime/codex/*
+!runs/**/.benchmark-runtime/codex/sessions/
+!runs/**/.benchmark-runtime/codex/sessions/**
+runs/**/.benchmark-runtime/pi/*
+!runs/**/.benchmark-runtime/pi/sessions/
+!runs/**/.benchmark-runtime/pi/sessions/**
