@@ -1,14 +1,70 @@
 # DeepSeek CLI Harness Benchmark
 
-This repository prepares reproducible case directories and prints interactive
-CLI commands. It does not launch a terminal, submit the prompt, monitor the
-process, or collect result metadata.
+This repository is a reproducible benchmark bundle for comparing CLI harnesses
+running the same DeepSeek models and reasoning tiers. It contains the canonical
+prompt, raw Pi/Codex/DSH session metadata, generated implementations,
+browser-reviewed quality evidence, normalization scripts, and two self-contained
+HTML reports.
+
+The included launcher prepares isolated case directories and prints interactive
+CLI commands; it does not launch a terminal, submit the prompt, or monitor the
+process. The reviewed runs committed under `runs/` were captured separately and
+are preserved as benchmark evidence.
+
+## Reports
+
+1. [DeepSeek CLI Harness benchmark report](output/pdf/deepseek-cli-harness-report/report.html) — the primary Pi vs Codex vs DSH comparison across completion time, one-shot completion, input/cache behavior, tool failures, and implementation quality.
+2. [DSH preview CLI recommendations](output/pdf/dsh-preview-cli-recommendations/report.html) — a focused, friendly review of DSH's recovery semantics, capability negotiation, tool contracts, visual validation, and observability roadmap.
+
+Both reports are delivered as self-contained HTML. Their reviewed
+`artifact.json` payloads and `verification.md` records live beside each report;
+PDF copies are intentionally not retained.
+
+![Adjusted completion time vs implementation quality](assets/adjusted-completion-time-vs-quality.png)
+
+`F/P` means DeepSeek V4 Flash/Pro, `H/M` means high/max reasoning effort, and
+color identifies the CLI harness. DSH adjusted time excludes explicit
+disconnect and retry waits; use the primary report for definitions and caveats.
+
+## Evidence and metadata map
+
+The JSONL session logs are the primary run metadata. The report artifacts are
+reviewed projections of this evidence, not replacements for it.
+
+| Evidence layer | Primary location | Purpose |
+| --- | --- | --- |
+| Canonical prompt | [`prompts.md`](prompts.md) | Shared input used by every reviewed case. |
+| Pi session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/pi/sessions/*.jsonl` | Model messages, tool calls/results, token/cache usage, and timing events. |
+| Codex session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/codex/sessions/**/*.jsonl` | Rollout events, tool outcomes, token/cache usage, and timing events. |
+| DSH session metadata | `runs/dsh/<case>/session.jsonl` | Turn lifecycle, retries, sandbox changes, tool calls/results, and usage data. |
+| Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations, Pi session exports, and DSH preview images. |
+| Normalized case metrics | [`analysis/analyze-runs.mjs`](analysis/analyze-runs.mjs) | Reconciles the three session schemas into comparable case-level metrics. |
+| Quality review | [`analysis/quality-assessment.md`](analysis/quality-assessment.md) | Browser-reviewed rubric, critical defects, and scoring rationale. |
+| DSH failure audit | [`analysis/audit-dsh-errors.mjs`](analysis/audit-dsh-errors.mjs) | Reconciles harness-declared failures with non-zero exits and runtime exceptions. |
+| Report queries | [`analysis/report-source.sql`](analysis/report-source.sql) and [`analysis/harness-summary.sql`](analysis/harness-summary.sql) | Reviewed case and harness materializations used by the main report. |
+
+## Prompt provenance and acknowledgements
+
+The canonical prompt in [`prompts.md`](prompts.md) comes from
+[awesome-llm-benchmark-prompts](https://github.com/karminski/awesome-llm-benchmark-prompts),
+specifically its
+[3.5-inch floppy-disk exploded-view prompt](https://github.com/karminski/awesome-llm-benchmark-prompts/blob/main/instruction/prompt-complex-frontend-floppydisk.md),
+published as `CC-BY-NC-SA 4.0 by karminski-牙医`. Many thanks to 牙医 for
+creating and openly sharing this rigorous benchmark prompt.
+
+## A note for DSH
+
+DSH could learn from Pi's
+[AgentHarness implementation specification](https://github.com/earendil-works/pi/blob/main/packages/agent/docs/harness.md)
+and publish a similarly explicit harness contract. That would give contributors
+a clear development roadmap and help align the upper-layer design before
+implementation details harden.
+
+## Run
 
 Install the harnesses you want to compare. Claude Code can be installed with
 `npm install -g @anthropic-ai/claude-code`; Claude cases also use the existing
 Pi DeepSeek credential through Pi's credential helper.
-
-## Run
 
 Paste the benchmark prompt into `prompts.md`, then prepare a timestamped run:
 
