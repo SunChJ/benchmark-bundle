@@ -1,21 +1,39 @@
 # Chart Map
 
-## One-shot completion time
+## Adjusted completion time
 
-- Question: Which harness, model tier, and effort combination finishes the task fastest?
+- Question: Which harness, model tier, and effort combination reaches a completed artifact fastest after removing DSH's explicit disconnect and retry waits?
 - Dataset: `cases`
-- Fields: `case`, `duration_min`
+- Fields: `case`, `duration_min`, `wall_duration_min`, `completion_mode`
 - Mark: Horizontal bar
 - Sort: Ascending by `duration_min`
 - Source: `analysis/analyze-runs.mjs`
+- Caveat: DSH rows are human-assisted completions; Pi/Codex rows are one-shot. DSH adjusted time removes logged 300-second idle timeouts, retry backoff, and error-end-to-next-turn gaps.
+
+## One-shot completion rate
+
+- Question: Does each harness complete the same prompt without manual continuation?
+- Dataset: `harness_summary`
+- Fields: `harness`, `one_shot_rate`
+- Mark: Horizontal bar
+- Source: `analysis/analyze-runs.mjs`
+
+## Observed tool-result failure rate
+
+- Question: What share of tool calls returned an explicit error result?
+- Dataset: `harness_summary`
+- Fields: `harness`, `tool_failure_rate`, `tool_failures`, `tool_calls`
+- Mark: Horizontal bar
+- Source: `analysis/analyze-runs.mjs`
+- Caveat: This is an incidence metric, not a severity metric. DSH has a lower raw rate but uniquely exposes model-capability mismatches and fails to recover one-shot from stream timeouts.
 
 ## Input token cache composition
 
 - Question: How much of each run's model input was served from cache?
-- Dataset: `token_components`
-- Fields: `case`, `component`, `share`, `tokens_m`
+- Dataset: `cases`
+- Fields: `case`, `cached_input_tokens`, `uncached_input_tokens`, `cache_hit_rate`
 - Mark: 100% horizontal stacked bar
-- Sort: Preserve case order
+- Sort: Preserve adjusted-duration order
 - Source: `analysis/analyze-runs.mjs`
 
 ## Implementation quality score
@@ -31,7 +49,7 @@
 
 - Question: Which cases lie on the practical speed-quality frontier?
 - Dataset: `cases`
-- Fields: `case`, `duration_min`, `quality_score`, `harness`, `critical_status`
+- Fields: `case`, `duration_min`, `quality_score`, `harness`, `completion_mode`, `critical_status`
 - Mark: Scatter with direct labels
 - Sort: Not applicable
 - Source: Deterministic join of `analysis/analyze-runs.mjs` and `analysis/quality-assessment.md` by `case`
@@ -40,5 +58,5 @@
 
 - Harness is the only semantic color encoding in the scatter plot.
 - Cache component is the only semantic color encoding in the stacked chart.
-- Other ranked charts use one neutral sequential palette.
-- All eight cases remain visible; no top-N truncation is applied.
+- Other ranked charts use a neutral sequential palette.
+- All 12 cases remain visible; no top-N truncation is applied.
