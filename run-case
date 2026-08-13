@@ -1,0 +1,116 @@
+#!/bin/zsh
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+RUNS_ROOT=${BENCHMARK_RUNS_ROOT:-$SCRIPT_DIR/runs}
+CURRENT_RUN_FILE=${BENCHMARK_CURRENT_RUN_FILE:-$RUNS_ROOT/.current}
+PI_BINARY=${PI_BINARY:-${commands[pi]:-}}
+CODEX_BINARY=${CODEX_BINARY:-${commands[codex]:-}}
+CLAUDE_BINARY=${CLAUDE_BINARY:-${commands[claude]:-}}
+PI_AUTH_FILE=${PI_AUTH_FILE:-$HOME/.pi/agent/auth.json}
+CODEX_PROFILE_FILE=${CODEX_PROFILE_FILE:-$HOME/.codex/deepseek.config.toml}
+CODEX_MODEL_CATALOG=${CODEX_MODEL_CATALOG:-$HOME/.codex/models.json}
+
+die() {
+  print -u2 -r -- "error: $*"
+  exit 2
+}
+
+(( $# == 1 )) || die "usage: ./run-case <case>"
+case_name=$1
+
+case $case_name in
+  pi-flash-high)       harness=pi;    model=deepseek-v4-flash; reasoning=high ;;
+  pi-flash-max)        harness=pi;    model=deepseek-v4-flash; reasoning=max ;;
+  pi-pro-high)         harness=pi;    model=deepseek-v4-pro;   reasoning=high ;;
+  pi-pro-max)          harness=pi;    model=deepseek-v4-pro;   reasoning=max ;;
+  codex-ds-flash-high) harness=codex; model=deepseek-v4-flash; reasoning=high ;;
+  codex-ds-flash-max)  harness=codex; model=deepseek-v4-flash; reasoning=max ;;
+  codex-ds-pro-high)   harness=codex; model=deepseek-v4-pro;   reasoning=high ;;
+  codex-ds-pro-max)    harness=codex; model=deepseek-v4-pro;   reasoning=max ;;
+  claude-ds-flash-high) harness=claude; model=deepseek-v4-flash;   reasoning=high ;;
+  claude-ds-flash-max)  harness=claude; model=deepseek-v4-flash;   reasoning=max ;;
+  claude-ds-pro-high)   harness=claude; model='deepseek-v4-pro[1m]'; reasoning=high ;;
+  claude-ds-pro-max)    harness=claude; model='deepseek-v4-pro[1m]'; reasoning=max ;;
+  *) die "unknown case: $case_name" ;;
+esac
+
+[[ -f $CURRENT_RUN_FILE ]] || die "no prepared run; execute ./prepare.sh first"
+IFS= read -r run_dir < "$CURRENT_RUN_FILE"
+[[ -n $run_dir && -f $run_dir/prompts.md ]] \
+  || die "current run is invalid; execute ./prepare.sh again"
+run_dir=$(builtin cd "$run_dir" && pwd -P)
+
+case_dir=$run_dir/$case_name
+if [[ -e $case_dir && ! -d $case_dir ]]; then
+  die "case path is not a directory: $case_dir"
+fi
+if [[ ! -d $case_dir ]]; then
+  command mkdir "$case_dir" || die "failed to create case directory: $case_dir"
+fi
+case_dir=$(builtin cd "$case_dir" && pwd -P)
+case_entries=("$case_dir"/*(DN))
+(( ${#case_entries} == 0 )) \
+  || die "case directory is not empty; execute ./prepare.sh for a fresh run: $case_dir"
+
+if [[ $harness == pi ]]; then
+  [[ -n $PI_BINARY && -x $PI_BINARY ]] || die "pi executable not found"
+  [[ -f $PI_AUTH_FILE ]] || die "pi auth file not found: $PI_AUTH_FILE"
+  launch=(
+    "$SCRIPT_DIR/run-sandboxed-case"
+    pi
+    "$case_dir"
+    "$PI_BINARY"
+    "$model"
+    "$reasoning"
+    "$PI_AUTH_FILE"
+  )
+elif [[ $harness == codex ]]; then
+  [[ -n $CODEX_BINARY && -x $CODEX_BINARY ]] || die "codex executable not found"
+  [[ -f $CODEX_PROFILE_FILE ]] || die "Codex profile not found: $CODEX_PROFILE_FILE"
+  [[ -f $CODEX_MODEL_CATALOG ]] || die "Codex model catalog not found: $CODEX_MODEL_CATALOG"
+
+  launch=(
+    "$SCRIPT_DIR/run-sandboxed-case"
+    codex
+    "$case_dir"
+    "$CODEX_BINARY"
+    "$model"
+    "$reasoning"
+    "$CODEX_PROFILE_FILE"
+    "$CODEX_MODEL_CATALOG"
+  )
+else
+  [[ -n $CLAUDE_BINARY && -x $CLAUDE_BINARY ]] \
+    || die "claude executable not found; install @anthropic-ai/claude-code"
+  [[ -n $PI_BINARY && -x $PI_BINARY ]] \
+    || die "pi executable not found; it is required to read the DeepSeek credential"
+  [[ -f $PI_AUTH_FILE ]] || die "pi auth file not found: $PI_AUTH_FILE"
+
+  launch=(
+    "$SCRIPT_DIR/run-sandboxed-case"
+    claude
+    "$case_dir"
+    "$CLAUDE_BINARY"
+    "$model"
+    "$reasoning"
+    "$PI_AUTH_FILE"
+    "$PI_BINARY"
+  )
+fi
+
+if [[ ${RUNS_ROOT:A} == "$SCRIPT_DIR/runs" ]]; then
+  case_display=runs/${run_dir:t}/$case_name
+else
+  case_display=$case_dir
+fi
+prompt_display=$run_dir/prompts.md
+
+print -r -- "Prepared: $case_display"
+print -r -- "Prompt:   $prompt_display"
+print -r -- ""
+print -r -- "Run this command:"
+print -rn -- "cd ${(q)case_dir} && "
+print -r -- ${(q)launch}
+print -r -- ""
+print -r -- "Then paste the prompt into the CLI."

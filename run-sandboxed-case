@@ -1,0 +1,223 @@
+#!/bin/zsh
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+SANDBOX_BINARY=/usr/bin/sandbox-exec
+SANDBOX_PROFILE=$SCRIPT_DIR/case-write-only.sb
+
+die() {
+  print -u2 -r -- "error: $*"
+  exit 2
+}
+
+(( $# >= 6 )) || die "internal usage: run-sandboxed-case <pi|codex|claude> <case-dir> <binary> <model> <reasoning> <credential-config> [harness-argument]"
+
+harness=$1
+case_dir=${2:A}
+binary=${3:A}
+model=$4
+reasoning=$5
+credential_config=${6:A}
+shift 6
+
+[[ $harness == pi || $harness == codex || $harness == claude ]] \
+  || die "unsupported harness: $harness"
+[[ -d $case_dir ]] || die "case directory not found: $case_dir"
+[[ -x $binary ]] || die "harness executable not found: $binary"
+[[ -x $SANDBOX_BINARY ]] || die "macOS sandbox-exec not found"
+[[ -f $SANDBOX_PROFILE ]] || die "sandbox profile not found: $SANDBOX_PROFILE"
+[[ -f $credential_config ]] || die "credential/config file not found: $credential_config"
+
+runtime_dir=$case_dir/.benchmark-runtime
+tmp_dir=$runtime_dir/tmp
+cache_dir=$runtime_dir/cache
+config_dir=$runtime_dir/config
+data_dir=$runtime_dir/data
+command mkdir -p "$tmp_dir" "$cache_dir" "$config_dir" "$data_dir"
+
+common_environment=(
+  "HOME=$HOME"
+  "PATH=$PATH"
+  "SHELL=${SHELL:-/bin/zsh}"
+  "LANG=${LANG:-en_US.UTF-8}"
+  "TMPDIR=$tmp_dir/"
+  "TMP=$tmp_dir"
+  "TEMP=$tmp_dir"
+  "XDG_CACHE_HOME=$cache_dir"
+  "XDG_CONFIG_HOME=$config_dir"
+  "XDG_DATA_HOME=$data_dir"
+  "XDG_RUNTIME_DIR=$runtime_dir/runtime"
+  "npm_config_cache=$cache_dir/npm"
+  "PIP_CACHE_DIR=$cache_dir/pip"
+  "UV_CACHE_DIR=$cache_dir/uv"
+  "PLAYWRIGHT_BROWSERS_PATH=$cache_dir/playwright"
+)
+command mkdir -p "$runtime_dir/runtime"
+
+if [[ $harness == pi ]]; then
+  pi_home=$runtime_dir/pi
+  command mkdir -p "$pi_home/sessions"
+
+  pi_api_key=$(PI_CODING_AGENT_DIR="${credential_config:h}" \
+    "$binary" auth print-api-key --provider deepseek) \
+    || die "failed to read the Pi DeepSeek credential"
+  [[ -n $pi_api_key ]] || die "Pi DeepSeek credential is empty"
+
+  command jq -n '{
+    quietStartup: true,
+    defaultProjectTrust: "never",
+    enableInstallTelemetry: false,
+    enableAnalytics: false,
+    enableSkillCommands: false,
+    packages: []
+  }' > "$pi_home/settings.json"
+
+  for model_file in "$HOME/.pi/agent/models.json" "$HOME/.pi/agent/models-store.json"; do
+    [[ -f $model_file ]] || continue
+    command cp "$model_file" "$pi_home/${model_file:t}"
+  done
+
+  launch=(
+    /usr/bin/env "${common_environment[@]}"
+    "DEEPSEEK_API_KEY=$pi_api_key"
+    "PI_CODING_AGENT_DIR=$pi_home"
+    "PI_CODING_AGENT_SESSION_DIR=$pi_home/sessions"
+    "PI_TELEMETRY=0"
+    "$binary"
+    --provider deepseek
+    --model "$model"
+    --thinking "$reasoning"
+    --no-extensions
+    --no-skills
+    --no-prompt-templates
+    --no-themes
+    --no-context-files
+    --no-approve
+    --tui-mode regular
+  )
+elif [[ $harness == codex ]]; then
+  (( $# >= 1 )) || die "Codex model catalog argument is missing"
+  model_catalog=${1:A}
+  shift
+  [[ -f $model_catalog ]] || die "Codex model catalog not found: $model_catalog"
+
+  # Older generated commands appended host MCP names. A case-local CODEX_HOME
+  # has no host MCP definitions, so those names must not create partial server
+  # entries. Ignore any legacy trailing names to keep printed commands usable.
+
+  codex_home=$runtime_dir/codex
+  command mkdir -p "$codex_home"
+  codex_profile=$codex_home/deepseek.config.toml
+  if [[ -L $codex_profile ]]; then
+    command unlink "$codex_profile"
+  elif [[ -e $codex_profile && ! -f $codex_profile ]]; then
+    die "Codex profile path is not a regular file: $codex_profile"
+  fi
+  command cp "$credential_config" "$codex_profile"
+  command chmod 600 "$codex_profile"
+
+  trust_root=$case_dir
+  detected_root=$(command git -C "$case_dir" rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n $detected_root ]]; then
+    trust_root=${detected_root:A}
+  fi
+
+  toml_trust_root=${trust_root//\\/\\\\}
+  toml_trust_root=${toml_trust_root//\"/\\\"}
+  toml_model_catalog=${model_catalog//\\/\\\\}
+  toml_model_catalog=${toml_model_catalog//\"/\\\"}
+
+  # Codex performs its trust check before normal CLI config overrides are
+  # applied. Seed the disposable base config so the first launch is already
+  # trusted and never needs to persist into the host profile.
+  codex_config=$codex_home/config.toml
+  {
+    print -r -- "[projects.\"$toml_trust_root\"]"
+    print -r -- 'trust_level = "trusted"'
+  } > "$codex_config"
+  command chmod 600 "$codex_config"
+
+  launch=(
+    /usr/bin/env "${common_environment[@]}"
+    "CODEX_HOME=$codex_home"
+    "$binary"
+    --profile deepseek
+    --model "$model"
+    -c "model_catalog_json=\"$toml_model_catalog\""
+    -c "model_reasoning_effort=\"$reasoning\""
+    -c 'project_doc_max_bytes=0'
+    -c 'project_doc_fallback_filenames=[]'
+    -c "projects.\"$toml_trust_root\".trust_level=\"trusted\""
+    -c 'agents.enabled=false'
+    -c 'features.apps=false'
+    -c 'features.plugins=false'
+    -c 'features.remote_plugin=false'
+    -c 'features.hooks=false'
+    -c 'features.multi_agent=false'
+    -c 'features.multi_agent_v2=false'
+    -c 'features.skill_search=false'
+    -c 'features.skill_mcp_dependency_install=false'
+    -c 'features.workspace_dependencies=false'
+    -c 'features.browser_use=false'
+    -c 'features.browser_use_external=false'
+    -c 'features.browser_use_full_cdp_access=false'
+    -c 'features.computer_use=false'
+    -c 'features.in_app_browser=false'
+    -c 'features.image_generation=false'
+    -c 'features.memories=false'
+    -c 'tools.web_search=false'
+  )
+
+  launch+=(
+    --dangerously-bypass-approvals-and-sandbox
+    --no-alt-screen
+  )
+else
+  (( $# >= 1 )) || die "Pi credential helper argument is missing"
+  pi_binary=${1:A}
+  shift
+  [[ -x $pi_binary ]] || die "Pi credential helper not found: $pi_binary"
+
+  deepseek_api_key=$(PI_CODING_AGENT_DIR="${credential_config:h}" \
+    "$pi_binary" auth print-api-key --provider deepseek) \
+    || die "failed to read the Pi DeepSeek credential"
+  [[ -n $deepseek_api_key ]] || die "Pi DeepSeek credential is empty"
+
+  claude_home=$runtime_dir/claude
+  command mkdir -p "$claude_home"
+  claude_mcp_config=$claude_home/empty-mcp.json
+  print -r -- '{"mcpServers":{}}' > "$claude_mcp_config"
+  command chmod 600 "$claude_mcp_config"
+
+  launch=(
+    /usr/bin/env "${common_environment[@]}"
+    "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic"
+    "ANTHROPIC_AUTH_TOKEN=$deepseek_api_key"
+    "ANTHROPIC_MODEL=$model"
+    'ANTHROPIC_DEFAULT_OPUS_MODEL=deepseek-v4-pro[1m]'
+    'ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek-v4-pro[1m]'
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL=deepseek-v4-flash'
+    'CLAUDE_CODE_SUBAGENT_MODEL=deepseek-v4-flash'
+    "CLAUDE_CODE_EFFORT_LEVEL=$reasoning"
+    "CLAUDE_CONFIG_DIR=$claude_home"
+    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1'
+    'CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL=1'
+    'CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1'
+    'ENABLE_CLAUDEAI_MCP_SERVERS=false'
+    "$binary"
+    --model "$model"
+    --effort "$reasoning"
+    --bare
+    --strict-mcp-config
+    --mcp-config "$claude_mcp_config"
+    --disable-slash-commands
+    --no-chrome
+    --dangerously-skip-permissions
+  )
+fi
+
+builtin cd "$case_dir"
+exec "$SANDBOX_BINARY" \
+  -D "CASE_DIR=$case_dir" \
+  -f "$SANDBOX_PROFILE" \
+  "${launch[@]}"

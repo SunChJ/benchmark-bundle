@@ -1,0 +1,10 @@
+(version 1)
+
+(allow default)
+
+; Keep reads, networking, and process execution available, but reject every
+; filesystem write whose resolved target is outside the prepared case.
+(deny file-write*
+  (require-all
+    (require-not (subpath (param "CASE_DIR")))
+    (require-not (subpath "/dev"))))
