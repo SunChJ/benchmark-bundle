@@ -360,7 +360,7 @@ fi
 
 materialize_case=$TEMP_ROOT/materialize-case
 command mkdir -p "$materialize_case/.benchmark-runtime/codex/sessions/2026/08/14"
-command jq -nc --arg html '<!DOCTYPE html>\n<html><body>fixture</body></html>' \
+command jq -nc --arg html $'<!DOCTYPE html>\n<html><body>fixture</body></html>' \
   '{type:"event_msg",payload:{type:"task_complete",last_agent_message:$html}}' \
   > "$materialize_case/.benchmark-runtime/codex/sessions/2026/08/14/session.jsonl"
 command node "$ROOT/analysis/materialize-codex-html.mjs" \
