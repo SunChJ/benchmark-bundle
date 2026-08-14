@@ -367,4 +367,19 @@ command node "$ROOT/analysis/materialize-codex-html.mjs" \
   "$materialize_case" fixture.html >/dev/null
 [[ $(<"$materialize_case/fixture.html") == $'<!DOCTYPE html>\n<html><body>fixture</body></html>' ]]
 
+analysis_output=$TEMP_ROOT/analysis.json
+command node "$ROOT/analysis/analyze-runs.mjs" > "$analysis_output"
+command jq -e '
+  [.[] | select(.batch == "dsh")] as $dsh
+  | ($dsh | map(.case) | sort) == [
+      "dsh-mini-flash-high",
+      "dsh-mini-flash-max",
+      "dsh-mini-pro-high",
+      "dsh-mini-pro-max"
+    ]
+    and all($dsh[]; .harness == "DSH")
+    and all($dsh[]; .stack == "DSH / DeepSeek")
+    and all($dsh[]; .agentPreset == "minimal")
+' "$analysis_output" >/dev/null
+
 print -r -- "All shell benchmark tests passed."

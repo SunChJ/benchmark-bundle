@@ -29,12 +29,12 @@ async function filesRecursively(root, predicate) {
   return found.sort();
 }
 
-function parseCaseName(caseName) {
-  const harness = caseName.startsWith('ds-harness-')
+function parseCaseName(caseName, options = {}) {
+  const harness = options.harness ?? (caseName.startsWith('ds-harness-')
     ? 'DSH'
     : caseName.startsWith('codex-')
       ? 'Codex'
-      : 'Pi';
+      : 'Pi');
   const model = caseName.includes('-gpt56-sol-')
     ? 'GPT-5.6 Sol'
     : caseName.includes('-pro-')
@@ -225,6 +225,8 @@ function textItems(message) {
 }
 
 function summarizeDsh(events) {
+  const selectedPreset = events.findLast((event) => event.type === 'agent-preset/selected');
+  const session = events.find((event) => event.type === 'session');
   const userMessages = events.filter(
     (event) => event.type === 'user/message' && event.data?.source?.kind === 'user',
   );
@@ -307,6 +309,7 @@ function summarizeDsh(events) {
     retryTimeoutWaitMs + terminalTimeoutWaitMs + retryBackoffWaitMs + disconnectWaitMs;
 
   return {
+    agentPreset: selectedPreset?.data?.agentPreset ?? session?.agentPreset ?? null,
     durationMs: Math.max(0, wallDurationMs - excludedWaitMs),
     wallDurationMs,
     excludedWaitMs,
@@ -462,7 +465,7 @@ async function main() {
       sessionPath: path.relative(workspace, sessionFiles[0]),
       outputBytes: outputStat.size,
       outputLines: outputHtml.split('\n').length,
-      ...parseCaseName(caseName),
+      ...parseCaseName(caseName, { harness: 'DSH' }),
       ...metrics,
       implementation: scanImplementation(outputHtml),
     });

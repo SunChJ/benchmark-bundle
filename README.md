@@ -8,6 +8,12 @@ canonical prompt, raw Pi/Codex/DSH session metadata, generated implementations,
 browser-reviewed quality evidence, normalization scripts, and two self-contained
 HTML reports.
 
+The current raw DSH evidence under `runs/dsh/` contains the four
+`dsh-mini-{flash,pro}-{high,max}` cases rerun with DSH's `minimal` agent preset.
+The checked-in browser quality assessment and HTML reports are the preceding
+reviewed snapshot; regenerate them only after the mini outputs receive the same
+external browser review.
+
 The included launcher prepares isolated case directories and prints interactive
 CLI commands; it does not launch a terminal, submit the prompt, or monitor the
 process. The reviewed runs committed under `runs/` were captured separately and
@@ -38,7 +44,7 @@ reviewed projections of this evidence, not replacements for it.
 | Canonical prompt | [`prompts.md`](prompts.md) | Shared input used by every reviewed case. |
 | Pi session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/pi/sessions/*.jsonl` | Model messages, tool calls/results, token/cache usage, and timing events. |
 | Codex session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/codex/sessions/**/*.jsonl` | Rollout events, tool outcomes, token/cache usage, and timing events. |
-| DSH session metadata | `runs/dsh/<case>/session.jsonl` | Turn lifecycle, retries, sandbox changes, tool calls/results, and usage data. |
+| DSH minimal-preset session metadata | `runs/dsh/dsh-mini-<tier>-<effort>/session.jsonl` | Turn lifecycle, retries, sandbox changes, tool calls/results, usage data, and selected agent preset. |
 | Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations, browser QA images, Pi session exports, and DSH preview images. |
 | Normalized case metrics | [`analysis/analyze-runs.mjs`](analysis/analyze-runs.mjs) | Reconciles the three session schemas into comparable case-level metrics. |
 | Quality review | [`analysis/quality-assessment.md`](analysis/quality-assessment.md) | Browser-reviewed rubric, critical defects, and scoring rationale. |
