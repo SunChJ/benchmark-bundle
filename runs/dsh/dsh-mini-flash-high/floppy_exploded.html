@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3.5" Floppy Disk Exploded Blueprint</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #F5F7FA; }
+  #dot-grid {
+    position: fixed; inset: 0; z-index: 0;
+    display: block; width: 100%; height: 100%;
+  }
+  #webgl-container {
+    position: fixed; inset: 0; z-index: 1;
+  }
+  #webgl-container canvas { display: block; }
+  .css2d-container {
+    position: fixed; inset: 0; z-index: 2;
+    pointer-events: none;
+  }
+  .side-text {
+    position: fixed; z-index: 3;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+    color: #4169E1;
+    letter-spacing: 2px;
+    opacity: 0.55;
+    user-select: none;
+    pointer-events: none;
+  }
+  .side-text.left {
+    left: 18px; top: 50%;
+    transform: translateY(-50%) rotate(180deg);
+    writing-mode: vertical-rl;
+  }
+  .side-text.right {
+    right: 18px; top: 50%;
+    transform: translateY(-50%);
+    writing-mode: vertical-rl;
+  }
+  #hint {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    z-index: 4;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 13px;
+    color: #4169E1;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    transition: opacity 0.4s ease;
+    animation: breathe 2.4s ease-in-out infinite;
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #hint.hidden { opacity: 0 !important; animation: none; }
+  #controls-hint {
+    position: fixed; left: 50%; bottom: 62px; transform: translateX(-50%);
+    z-index: 4;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 10px;
+    color: #4169E1;
+    letter-spacing: 1px;
+    opacity: 0.45;
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .annotation-label {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 12px;
+    color: #4169E1;
+    background: transparent;
+    padding: 1px 4px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    text-shadow: 0 0 2px #F5F7FA, 0 0 4px #F5F7FA;
+    user-select: none;
+    pointer-events: none;
+  }
+  @keyframes breathe {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.75; }
+  }
+</style>
+</head>
+<body>
+<canvas id="dot-grid"></canvas>
+<div id="webgl-container"></div>
+<div class="side-text left">FIG_001</div>
+<div class="side-text right">[ 3.5&quot; FLOPPY DISK ]</div>
+<div id="hint">PRESS [ SPACE ] TO EXPLODE</div>
+<div id="controls-hint">LMB: ORBIT · WHEEL: ZOOM · RMB: PAN</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ============================================================
+// GLOBAL CONSTANTS
+// ============================================================
+const BLUE = 0x4169E1;
+const BLUE_LIGHT = 0xdbe7ff;
+const DISK_BLUE = 0x7b9df8;
+const SHELL_SIZE = 60;
+const SHUTTER_W = 6;   // opening width along shutter long axis (X)
+const SHUTTER_D = 14;  // opening depth along shutter short axis (Z)
+// Shared magnetic-head window: left-of-centre on the front edge.
+// X: -10 ... -4   (width 6), Z: 14 ... 28 (depth 14)
+const HEAD_WINDOW = { x: -10, z: 14, w: SHUTTER_W, d: SHUTTER_D };
+// Shutter-local opening (aligned with HEAD_WINDOW when shutter is assembled).
+const SHUTTER_HOLE = { x: -5, z: -7, w: SHUTTER_W, d: SHUTTER_D };
+
+// ============================================================
+// BASIC HELPERS
+// ============================================================
+
+/** Create an ExtrudeGeometry from a 2D Shape, lay it flat on XZ and center its Y thickness. */
+function makeFlatExtrude(shape, depth) {
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: depth,
+    bevelEnabled: false,
+    curveSegments: 6
+  });
+  // Shape XY -> world XZ; extrusion Z -> world -Y.
+  geo.rotateX(Math.PI / 2);
+  geo.translate(0, depth / 2, 0);
+  return geo;
+}
+
+/** Chamfered 60x60 square outline (3-unit corner cuts). */
+function makeShellOutline() {
+  const s = new THREE.Shape();
+  const h = SHELL_SIZE / 2; // 30
+  const c = 3;              // chamfer
+  s.moveTo(-h + c, h);
+  s.lineTo(h - c, h);
+  s.lineTo(h, h - c);
+  s.lineTo(h, -h + c);
+  s.lineTo(h - c, -h);
+  s.lineTo(-h + c, -h);
+  s.lineTo(-h, -h + c);
+  s.lineTo(-h, h - c);
+  s.closePath();
+  return s;
+}
+
+/** Add a Mesh + EdgesGeometry pair as children of parent. */
+function addEdgedMesh(parent, geometry, material, lineColor = BLUE, threshold = 1) {
+  const mesh = new THREE.Mesh(geometry, material);
+  const edges = new THREE.EdgesGeometry(geometry, threshold);
+  const line = new THREE.LineSegments(
+    edges,
+    new THREE.LineBasicMaterial({ color: lineColor })
+  );
+  // Keep edge lines as children of the mesh so positioned sub-components
+  // always carry their outlines with them.
+  mesh.add(line);
+  parent.add(mesh);
+  return mesh;
+}
+
+/** Standard blueprint fill material (except opaque shutter / disk). */
+function blueprintFill(color = BLUE_LIGHT, opacity = 1) {
+  return new THREE.MeshBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: opacity,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+}
+
+/** Collect all Mesh materials that should participate in opacity animation. */
+function collectAnimatedMaterials(group) {
+  const materials = [];
+  group.traverse((obj) => {
+    if (obj.isMesh && obj.material && obj.material.transparent === true) {
+      materials.push(obj.material);
+    }
+  });
+  return materials;
+}
+
+// ============================================================
+// DOT GRID BACKGROUND
+// ============================================================
+const dotCanvas = document.getElementById('dot-grid');
+const dotCtx = dotCanvas.getContext('2d');
+
+function resizeDotGrid() {
+  dotCanvas.width = window.innerWidth;
+  dotCanvas.height = window.innerHeight;
+  drawDotGrid();
+}
+
+function drawDotGrid() {
+  const w = dotCanvas.width;
+  const h = dotCanvas.height;
+  dotCtx.clearRect(0, 0, w, h);
+  dotCtx.fillStyle = '#F5F7FA';
+  dotCtx.fillRect(0, 0, w, h);
+  dotCtx.fillStyle = '#cfd9e6';
+  const spacing = 24;
+  for (let y = spacing / 2; y < h; y += spacing) {
+    for (let x = spacing / 2; x < w; x += spacing) {
+      dotCtx.beginPath();
+      dotCtx.arc(x, y, 1.2, 0, Math.PI * 2);
+      dotCtx.fill();
+    }
+  }
+}
+
+window.addEventListener('resize', resizeDotGrid);
+resizeDotGrid();
+
+// ============================================================
+// RENDERER / CAMERA / CONTROLS
+// ============================================================
+const container = document.getElementById('webgl-container');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+container.appendChild(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.classList.add('css2d-container');
+labelRenderer.domElement.style.position = 'fixed';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+
+const frustumSize = 115;
+const aspect = window.innerWidth / window.innerHeight;
+const camera = new THREE.OrthographicCamera(
+  -frustumSize * aspect / 2,
+  frustumSize * aspect / 2,
+  frustumSize / 2,
+  -frustumSize / 2,
+  0.1, 500
+);
+camera.position.set(100, 80, 100);
+camera.lookAt(0, 0, 0);
+camera.zoom = 1.0;
+camera.updateProjectionMatrix();
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enableRotate = true;
+controls.enablePan = true;
+controls.enableZoom = true;
+controls.minZoom = 0.55;
+controls.maxZoom = 2.8;
+controls.zoomSpeed = 0.8;
+// DCC style: left rotate, middle/scroll dolly, right pan.
+controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+// Keep the pivot near the model so panning cannot drag the disk completely off-screen.
+const MAX_TARGET_RADIUS = 35;
+controls.addEventListener('change', () => {
+  if (controls.target.length() > MAX_TARGET_RADIUS) {
+    controls.target.setLength(MAX_TARGET_RADIUS);
+  }
+});
+
+function onWindowResize() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  camera.left = -frustumSize * w / h / 2;
+  camera.right = frustumSize * w / h / 2;
+  camera.top = frustumSize / 2;
+  camera.bottom = -frustumSize / 2;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+  resizeDotGrid();
+}
+window.addEventListener('resize', onWindowResize);
+
+// ============================================================
+// GEOMETRY: TOP SHELL
+// ============================================================
+function createTopShell() {
+  const group = new THREE.Group();
+
+  // Main shell: chamfered plate with real holes for HD notch + shutter window.
+  const shape = makeShellOutline();
+  // HD notch (left rear corner) - square 4x4 true hole
+  const hdNotch = new THREE.Path();
+  hdNotch.moveTo(-28, -28);
+  hdNotch.lineTo(-24, -28);
+  hdNotch.lineTo(-24, -24);
+  hdNotch.lineTo(-28, -24);
+  hdNotch.closePath();
+  shape.holes.push(hdNotch);
+  // Magnetic head window (shared with bottom shell + shutter)
+  const hw = HEAD_WINDOW;
+  const hx1 = hw.x;
+  const hx2 = hw.x + hw.w;
+  const hz1 = hw.z;
+  const hz2 = hw.z + hw.d;
+  const headHole = new THREE.Path();
+  headHole.moveTo(hx1, hz1);
+  headHole.lineTo(hx2, hz1);
+  headHole.lineTo(hx2, hz2);
+  headHole.lineTo(hx1, hz2);
+  headHole.closePath();
+  shape.holes.push(headHole);
+
+  const bodyGeo = makeFlatExtrude(shape, 2);
+  const bodyMat = blueprintFill();
+  addEdgedMesh(group, bodyGeo, bodyMat);
+
+  // (b) Label recess: thin box slightly below the top surface.
+  const labelBoxGeo = new THREE.BoxGeometry(36, 0.5, 22);
+  const labelBoxMat = blueprintFill();
+  const labelBox = addEdgedMesh(group, labelBoxGeo, labelBoxMat);
+  labelBox.position.set(0, 0.62, -8);
+
+  // (c) Inner recess / shutter slide recess.
+  const innerBoxGeo = new THREE.BoxGeometry(20, 0.35, 10);
+  const innerBoxMat = blueprintFill();
+  const innerBox = addEdgedMesh(group, innerBoxGeo, innerBoxMat);
+  innerBox.position.set(0, 0.68, 6);
+
+  // (e) Arrow marker near shutter window (drawn on top surface).
+  const arrowPts = [
+    new THREE.Vector3(-13, 1.02, 16),
+    new THREE.Vector3(-6.5, 1.02, 21),
+    new THREE.Vector3(-13, 1.02, 26)
+  ];
+  const arrowGeo = new THREE.BufferGeometry().setFromPoints(arrowPts);
+  const arrow = new THREE.LineLoop(
+    arrowGeo,
+    new THREE.LineBasicMaterial({ color: BLUE })
+  );
+  group.add(arrow);
+
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: DUST LINER (C-shaped ring)
+// ============================================================
+function createDustLiner() {
+  const group = new THREE.Group();
+  const R = 22;
+  const r = 10;
+  const gap = 0.85; // angular width of the head window
+
+  // C-shaped annulus: outer circle with a gap, inner circle with matching gap.
+  const shape = new THREE.Shape();
+  const a0 = -gap / 2;
+  const a1 = gap / 2;
+  // Outer point at a0 -> inner point at a0 -> inner arc -> outer point at a1 -> outer arc back.
+  shape.moveTo(R * Math.sin(a0), R * Math.cos(a0));
+  shape.lineTo(r * Math.sin(a0), r * Math.cos(a0));
+  shape.absarc(0, 0, r, a0, a1, false);
+  shape.lineTo(R * Math.sin(a1), R * Math.cos(a1));
+  shape.absarc(0, 0, R, a1, a0, false);
+
+  const geo = makeFlatExtrude(shape, 0.2);
+  const mat = blueprintFill();
+  addEdgedMesh(group, geo, mat, BLUE, 2);
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: MAGNETIC DISK
+// ============================================================
+function createMagneticDisk() {
+  const group = new THREE.Group();
+  const geo = new THREE.CylinderGeometry(22, 22, 0.3, 48, 1);
+  const mat = new THREE.MeshBasicMaterial({
+    color: DISK_BLUE,
+    transparent: true,
+    opacity: 0.5,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+  addEdgedMesh(group, geo, mat, 0x1e3a8a, 20);
+
+  // A few short diagonal lines suggesting data tracks / reflection.
+  const trackLines = [
+    [[-10, 0.16, -10], [10, 0.16, 10]],
+    [[-4, 0.16, -15], [12, 0.16, -1]],
+    [[-15, 0.16, -4], [1, 0.16, 12]]
+  ];
+  trackLines.forEach(([a, b]) => {
+    const pts = [new THREE.Vector3(...a), new THREE.Vector3(...b)];
+    const g = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x1e3a8a }));
+    group.add(line);
+  });
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: HUB
+// ============================================================
+function createHub() {
+  const group = new THREE.Group();
+  // Disc with central circular hole and nearby square drive hole.
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, 5, 0, Math.PI * 2, false);
+  const centerHole = new THREE.Path();
+  centerHole.absarc(0, 0, 1.3, 0, Math.PI * 2, true);
+  shape.holes.push(centerHole);
+  const squareHole = new THREE.Path();
+  const sq = 0.9;
+  squareHole.moveTo(1.8 - sq, -sq);
+  squareHole.lineTo(1.8 - sq, sq);
+  squareHole.lineTo(1.8 + sq, sq);
+  squareHole.lineTo(1.8 + sq, -sq);
+  squareHole.closePath();
+  shape.holes.push(squareHole);
+
+  const geo = makeFlatExtrude(shape, 0.4);
+  const mat = blueprintFill();
+  addEdgedMesh(group, geo, mat);
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: BOTTOM SHELL
+// ============================================================
+function createBottomShell() {
+  const group = new THREE.Group();
+
+  // Main shell with central spindle hole, shutter window, and write-protect notch.
+  const shape = makeShellOutline();
+  // (b) central circular hole (diameter 14)
+  shape.holes.push(new THREE.Path().absarc(0, 0, 7, 0, Math.PI * 2, false));
+  // (g) shutter opening - same shared window as top shell
+  const hw = HEAD_WINDOW;
+  const hx1 = hw.x;
+  const hx2 = hw.x + hw.w;
+  const hz1 = hw.z;
+  const hz2 = hw.z + hw.d;
+  const headHole = new THREE.Path();
+  headHole.moveTo(hx1, hz1);
+  headHole.lineTo(hx2, hz1);
+  headHole.lineTo(hx2, hz2);
+  headHole.lineTo(hx1, hz2);
+  headHole.closePath();
+  shape.holes.push(headHole);
+  // (f) write-protect notch (right rear corner)
+  const wpHole = new THREE.Path();
+  wpHole.moveTo(24, -27);
+  wpHole.lineTo(27, -27);
+  wpHole.lineTo(27, -24);
+  wpHole.lineTo(24, -24);
+  wpHole.closePath();
+  shape.holes.push(wpHole);
+
+  const bodyGeo = makeFlatExtrude(shape, 2);
+  const bodyMat = blueprintFill();
+  addEdgedMesh(group, bodyGeo, bodyMat);
+
+  // (a) central large circular recess (magnetic disk seat) - ring, not a solid disc.
+  const seatShape = new THREE.Shape();
+  seatShape.absarc(0, 0, 22, 0, Math.PI * 2, false);
+  const seatHole = new THREE.Path();
+  seatHole.absarc(0, 0, 7, 0, Math.PI * 2, true);
+  seatShape.holes.push(seatHole);
+  const seatGeo = makeFlatExtrude(seatShape, 0.4);
+  const seatMat = blueprintFill();
+  const seat = addEdgedMesh(group, seatGeo, seatMat, BLUE, 15);
+  seat.position.set(0, 0.72, 0);
+
+  // (c) four corner positioning posts / screw bosses
+  const postPositions = [
+    [-26, -26], [26, -26], [-26, 26], [26, 26]
+  ];
+  postPositions.forEach(([x, z]) => {
+    const postGeo = new THREE.CylinderGeometry(1.5, 1.5, 1, 12, 1);
+    const postMat = blueprintFill();
+    const post = addEdgedMesh(group, postGeo, postMat, BLUE, 12);
+    post.position.set(x, 1.5, z);
+  });
+
+  // (d) LIFTER: small rectangular protrusion near the middle-lower area.
+  const lifterGeo = new THREE.BoxGeometry(8, 1, 4);
+  const lifterMat = blueprintFill();
+  const lifter = addEdgedMesh(group, lifterGeo, lifterMat);
+  lifter.position.set(0, 1.5, -8);
+
+  // (e) Shutter spring recess: small rectangular shallow box near front edge.
+  const springGeo = new THREE.BoxGeometry(10, 0.4, 4);
+  const springMat = blueprintFill();
+  const spring = addEdgedMesh(group, springGeo, springMat);
+  spring.position.set(5, 0.72, 23);
+
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: SHUTTER (opaque metal slide)
+// ============================================================
+function createShutter() {
+  const group = new THREE.Group();
+
+  // Outer plate 22 x 16, hole 6 x 14. Long axis = X (22), short axis = Z (16).
+  // Hole short edge (6) is parallel to shutter long edge; long edge (14) parallel to short edge.
+  const shape = new THREE.Shape();
+  shape.moveTo(-11, -8);
+  shape.lineTo(11, -8);
+  shape.lineTo(11, 8);
+  shape.lineTo(-11, 8);
+  shape.closePath();
+
+  // Left-biased rectangular hole (x from -5 to 1, z from -7 to 7).
+  const hole = new THREE.Path();
+  hole.moveTo(SHUTTER_HOLE.x, SHUTTER_HOLE.z);
+  hole.lineTo(SHUTTER_HOLE.x, SHUTTER_HOLE.z + SHUTTER_HOLE.d);
+  hole.lineTo(SHUTTER_HOLE.x + SHUTTER_HOLE.w, SHUTTER_HOLE.z + SHUTTER_HOLE.d);
+  hole.lineTo(SHUTTER_HOLE.x + SHUTTER_HOLE.w, SHUTTER_HOLE.z);
+  hole.closePath();
+  shape.holes.push(hole);
+
+  const geo = makeFlatExtrude(shape, 1);
+  // OPAQUE metal plate - must not become a blueprint ghost in exploded mode.
+  const mat = new THREE.MeshBasicMaterial({ color: 0x4a5568, side: THREE.DoubleSide });
+  addEdgedMesh(group, geo, mat, BLUE, 1);
+  return group;
+}
+
+// ============================================================
+// GEOMETRY: WRITE PROTECT TAB
+// ============================================================
+function createWriteProtectTab() {
+  const group = new THREE.Group();
+  const geo = new THREE.BoxGeometry(3, 2, 3);
+  const mat = blueprintFill();
+  addEdgedMesh(group, geo, mat);
+  return group;
+}
+
+// ============================================================
+// BUILD SCENE / PARTS
+// ============================================================
+const topShell = createTopShell();
+const dustLinerUpper = createDustLiner();
+const magneticDisk = createMagneticDisk();
+const hub = createHub();
+const dustLinerLower = createDustLiner();
+const bottomShell = createBottomShell();
+const shutter = createShutter();
+const writeProtectTab = createWriteProtectTab();
+
+scene.add(topShell);
+scene.add(dustLinerUpper);
+scene.add(magneticDisk);
+scene.add(hub);
+scene.add(dustLinerLower);
+scene.add(bottomShell);
+scene.add(shutter);
+scene.add(writeProtectTab);
+
+// ============================================================
+// ANIMATION: setupParts
+// ============================================================
+const parts = [];
+const DURATION = 2600;       // each part's own travel time
+const STAGGER = 80;          // ms between parts
+const MAX_STAGGER = 6 * STAGGER; // 480 ms, total ~3.08s
+
+function setupParts() {
+  // [group, assembledPos, explodedPos, delayIndex, explodedOpacity]
+  // Dust liner lower stays at Y=0 by design (the bottom of the stack).
+  const defs = [
+    { group: topShell,         from: [0, 1.5, 0],  to: [0, 45, 0], delay: 0 },
+    { group: dustLinerUpper,   from: [0, 1.0, 0],  to: [0, 30, 0], delay: 1 },
+    { group: magneticDisk,     from: [0, 0.5, 0],  to: [0, 15, 0], delay: 2 },
+    { group: hub,              from: [0, 0.7, 0],  to: [0, 18, 0], delay: 3 },
+    { group: dustLinerLower,   from: [0, 0.0, 0],  to: [0, 0, 0],  delay: 4 },
+    { group: bottomShell,      from: [0, -1.5, 0], to: [0, -15, 0], delay: 5 },
+    { group: shutter,          from: [HEAD_WINDOW.x - SHUTTER_HOLE.x, -1.5, HEAD_WINDOW.z - SHUTTER_HOLE.z], to: [-30, -15, 30], delay: 4 },
+    { group: writeProtectTab,  from: [26, -1.0, -26], to: [35, -15, -35], delay: 5 }
+  ];
+
+  defs.forEach((d) => {
+    const from = new THREE.Vector3(...d.from);
+    const to = new THREE.Vector3(...d.to);
+    d.group.position.copy(from);
+    const mats = collectAnimatedMaterials(d.group);
+    // Assembled state always starts visually opaque (disk 1.0, shells 1.0).
+    mats.forEach((m) => { m.opacity = 1; m.depthWrite = true; });
+    const isDisk = d.group === magneticDisk;
+    const isShutter = d.group === shutter;
+    const toOpacity = isDisk ? 0.5 : 0.08;
+    const fromOpacity = 1;
+    parts.push({
+      group: d.group,
+      from,
+      to,
+      delay: d.delay * STAGGER,
+      materials: mats,
+      fromOpacity,
+      toOpacity: isShutter ? 1 : toOpacity
+    });
+  });
+}
+setupParts();
+
+// ============================================================
+// LABELS + LEADER LINES
+// ============================================================
+const labelGroup = new THREE.Group();
+const labelItems = []; // { css, line }
+let labelRevealToken = 0; // invalidates pending label fades when hiding
+scene.add(labelGroup);
+
+function createAnnotation(text, anchor, pos) {
+  const div = document.createElement('div');
+  div.className = 'annotation-label';
+  div.textContent = text;
+
+  const css = new CSS2DObject(div);
+  css.position.copy(pos);
+  css.visible = false;
+  labelGroup.add(css);
+
+  const pts = [anchor.clone(), pos.clone()];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const line = new THREE.Line(
+    geo,
+    new THREE.LineBasicMaterial({ color: BLUE, transparent: true, opacity: 0 })
+  );
+  line.visible = false;
+  labelGroup.add(line);
+
+  labelItems.push({ css, line, el: div });
+  return { css, line };
+}
+
+function createAllLabels() {
+  // Anchors are on exploded parts; label positions are slightly offset.
+  createAnnotation('HD NOTCH', new THREE.Vector3(-26, 45, -26), new THREE.Vector3(-26, 54, -34));
+  createAnnotation('TOP SHELL', new THREE.Vector3(20, 45, 0), new THREE.Vector3(30, 50, 0));
+  createAnnotation('DUST LINER (UPPER)', new THREE.Vector3(14, 30, -16), new THREE.Vector3(32, 34, -24));
+  createAnnotation('MAGNETIC DISK', new THREE.Vector3(18, 15, 0), new THREE.Vector3(31, 19, 0));
+  createAnnotation('HUB', new THREE.Vector3(0, 18, 0), new THREE.Vector3(0, 26, 0));
+  createAnnotation('DUST LINER (LOWER)', new THREE.Vector3(14, 0, -16), new THREE.Vector3(30, 4, -26));
+  createAnnotation('BOTTOM SHELL', new THREE.Vector3(20, -15, 0), new THREE.Vector3(31, -21, 0));
+  createAnnotation('LIFTER', new THREE.Vector3(0, -15, -8), new THREE.Vector3(0, -23, -16));
+  createAnnotation('SHUTTER SPRING', new THREE.Vector3(5, -15, 23), new THREE.Vector3(14, -22, 31));
+  createAnnotation('WRITE PROTECT NOTCH', new THREE.Vector3(26, -15, -26), new THREE.Vector3(38, -22, -38));
+  createAnnotation('SHUTTER', new THREE.Vector3(-30, -15, 30), new THREE.Vector3(-40, -22, 38));
+  createAnnotation('WRITE PROTECT TAB', new THREE.Vector3(35, -15, -35), new THREE.Vector3(46, -23, -44));
+}
+createAllLabels();
+
+// ============================================================
+// DASHED LINES
+// ============================================================
+const dashedGroup = new THREE.Group();
+const dashLines = [];
+scene.add(dashedGroup);
+
+function makeDashedLine(a, b) {
+  const pts = [new THREE.Vector3(...a), new THREE.Vector3(...b)];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineDashedMaterial({
+    color: BLUE,
+    dashSize: 4,
+    gapSize: 4,
+    transparent: true,
+    opacity: 0
+  });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  line.visible = false;
+  dashedGroup.add(line);
+  dashLines.push(line);
+  return line;
+}
+
+function createDashedLines() {
+  // Four vertical lines through the shell corners: bottom shell -> top shell exploded.
+  const corners = [
+    [-26, -26], [26, -26], [-26, 26], [26, 26]
+  ];
+  corners.forEach(([x, z]) => {
+    makeDashedLine([x, -15, z], [x, 45, z]);
+  });
+  // Oblique dashed lines for the two external small parts.
+  makeDashedLine([-5, -15, 21], [-30, -15, 30]);   // shutter to bottom shell slot
+  makeDashedLine([26, -15, -26], [35, -15, -35]);  // write-protect tab to bottom shell
+}
+createDashedLines();
+
+// ============================================================
+// ANIMATION STATE MACHINE
+// ============================================================
+let animState = 'assembled'; // assembled | exploding | exploded | collapsing
+let animStart = 0;
+let collapseStart = 0;
+const hintEl = document.getElementById('hint');
+const easing = (t) => {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+
+function setHintVisible(visible) {
+  hintEl.classList.toggle('hidden', !visible);
+}
+
+// === ANIMATION: explode trigger ===
+function triggerExplode() {
+  if (animState !== 'assembled') return;
+  animState = 'exploding';
+  animStart = performance.now();
+  setHintVisible(false);
+}
+
+// === ANIMATION: collapse trigger ===
+function triggerCollapse() {
+  if (animState !== 'exploded') return;
+  hideLabels();
+  animState = 'collapsing';
+  // Give the label CSS fade ~350ms before parts begin moving back.
+  collapseStart = performance.now() + 350;
+}
+
+// ============================================================
+// ANIMATION: update
+// ============================================================
+function updateAnimation(now) {
+  if (animState === 'exploding' || animState === 'collapsing') {
+    const forward = animState === 'exploding';
+    const start = forward ? animStart : collapseStart;
+    const elapsed = Math.max(0, now - start);
+    const maxTime = DURATION + MAX_STAGGER;
+
+    let allDone = true;
+    for (const p of parts) {
+      const raw = (elapsed - p.delay) / DURATION;
+      const clamped = Math.max(0, Math.min(1, raw));
+      const eased = easing(clamped);
+
+      let t = eased;
+      if (!forward) t = 1 - eased;
+
+      p.group.position.lerpVectors(p.from, p.to, t);
+
+      const op = p.fromOpacity + (p.toOpacity - p.fromOpacity) * t;
+      for (const m of p.materials) {
+        m.opacity = op;
+        // Keep assembled state solid, but let exploded blueprint parts become ghost-like.
+        m.depthWrite = op > 0.5;
+      }
+
+      if (raw < 1) allDone = false;
+    }
+
+    if (forward && elapsed >= maxTime && allDone) {
+      animState = 'exploded';
+      setHintVisible(false);
+      showLabels();
+    } else if (!forward && elapsed >= maxTime && allDone) {
+      // Ensure exact assembled values.
+      for (const p of parts) {
+        p.group.position.copy(p.from);
+        for (const m of p.materials) { m.opacity = p.fromOpacity; m.depthWrite = true; }
+      }
+      animState = 'assembled';
+      setHintVisible(true);
+    }
+  }
+}
+
+// ============================================================
+// LABEL / DASHED LINE SHOW/HIDE
+// ============================================================
+function fadeLine(line, target, duration = 400) {
+  const token = (line.userData.fadeToken || 0) + 1;
+  line.userData.fadeToken = token;
+  const start = performance.now();
+  const startOpacity = line.material.opacity;
+  const step = (now) => {
+    if (line.userData.fadeToken !== token) return;
+    const p = Math.min(1, (now - start) / duration);
+    const e = easing(p);
+    line.material.opacity = startOpacity + (target - startOpacity) * e;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function showLabels() {
+  const token = ++labelRevealToken;
+
+  // 1) After 200ms, fade in dashed vertical / oblique lines.
+  setTimeout(() => {
+    if (token !== labelRevealToken) return;
+    dashedGroup.visible = true;
+    dashLines.forEach((line) => {
+      line.visible = true;
+      line.material.opacity = 0;
+    });
+    const t0 = performance.now();
+    const dashFade = (now) => {
+      if (token !== labelRevealToken) return;
+      const p = Math.min(1, (now - t0) / 400);
+      const e = easing(p);
+      dashLines.forEach((line) => { line.material.opacity = e; });
+      if (p < 1) requestAnimationFrame(dashFade);
+    };
+    requestAnimationFrame(dashFade);
+  }, 200);
+
+  // 2) Then labels fade in top-to-bottom, 60ms apart.
+  setTimeout(() => {
+    if (token !== labelRevealToken) return;
+    labelItems.forEach((item, i) => {
+      setTimeout(() => {
+        if (token !== labelRevealToken) return;
+        item.css.visible = true;
+        item.line.visible = true;
+        item.line.material.opacity = 0;
+        fadeLine(item.line, 1, 400);
+        // Force reflow so the CSS transition from 0 to 1 actually plays.
+        void item.el.offsetWidth;
+        item.el.style.opacity = '1';
+      }, i * 60);
+    });
+  }, 400);
+}
+
+function hideLabels() {
+  // Invalidate any pending label reveal timers.
+  labelRevealToken++;
+  // Fade CSS labels out.
+  labelItems.forEach((item) => {
+    item.el.style.opacity = '0';
+    item.line.visible = true;
+    fadeLine(item.line, 0, 300);
+    setTimeout(() => {
+      item.line.visible = false;
+      item.css.visible = false;
+    }, 350);
+  });
+  // Fade dashed lines out.
+  dashLines.forEach((line) => {
+    line.material.opacity = 0;
+    setTimeout(() => { line.visible = false; }, 400);
+  });
+}
+
+// ============================================================
+// KEYBOARD
+// ============================================================
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (animState === 'assembled') triggerExplode();
+    else if (animState === 'exploded') triggerCollapse();
+    // Ignore presses while animating.
+  }
+});
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+function animate(now) {
+  requestAnimationFrame(animate);
+  updateAnimation(now);
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+
+// ============================================================
+// SELF-CHECK COMMENTS (shutter + openings)
+// ============================================================
+/*
+ * SHUTTER SELF CHECK
+ * 1. SHUTTER is built with opaque MeshBasicMaterial (#4a5568), not a ghost/transparent shell.
+ * 2. SHUTTER uses a real rectangular hole (Shape + hole + ExtrudeGeometry).
+ *    The hole is left-biased (x -5..1 on a -11..11 plate).
+ *    Hole short edge (6 along X) is parallel to shutter long edge (22 along X);
+ *    hole long edge (14 along Z) is parallel to shutter short edge (16 along Z).
+ * 3. TOP SHELL (d), BOTTOM SHELL (g), and SHUTTER reuse HEAD_WINDOW /
+ *    SHUTTER_W / SHUTTER_D values, so their openings share the same size and
+ *    local front-edge coordinate in assembled state.
+ */
+</script>
+</body>
+</html>
