@@ -10,7 +10,7 @@ die() {
   exit 2
 }
 
-(( $# >= 6 )) || die "internal usage: run-sandboxed-case <pi|codex|claude> <case-dir> <binary> <model> <reasoning> <credential-config> [harness-argument]"
+(( $# >= 6 )) || die "internal usage: run-sandboxed-case <pi|pi-openai|codex|codex-openai|claude> <case-dir> <binary> <model> <reasoning> <credential-config> [harness-argument]"
 
 harness=$1
 case_dir=${2:A}
@@ -20,7 +20,7 @@ reasoning=$5
 credential_config=${6:A}
 shift 6
 
-[[ $harness == pi || $harness == codex || $harness == claude ]] \
+[[ $harness == pi || $harness == pi-openai || $harness == codex || $harness == codex-openai || $harness == claude ]] \
   || die "unsupported harness: $harness"
 [[ -d $case_dir ]] || die "case directory not found: $case_dir"
 [[ -x $binary ]] || die "harness executable not found: $binary"
@@ -54,14 +54,26 @@ common_environment=(
 )
 command mkdir -p "$runtime_dir/runtime"
 
-if [[ $harness == pi ]]; then
+if [[ $harness == pi || $harness == pi-openai ]]; then
   pi_home=$runtime_dir/pi
   command mkdir -p "$pi_home/sessions"
 
-  pi_api_key=$(PI_CODING_AGENT_DIR="${credential_config:h}" \
-    "$binary" auth print-api-key --provider deepseek) \
-    || die "failed to read the Pi DeepSeek credential"
-  [[ -n $pi_api_key ]] || die "Pi DeepSeek credential is empty"
+  pi_provider=deepseek
+  pi_environment=()
+  if [[ $harness == pi ]]; then
+    pi_api_key=$(PI_CODING_AGENT_DIR="${credential_config:h}" \
+      "$binary" auth print-api-key --provider deepseek) \
+      || die "failed to read the Pi DeepSeek credential"
+    [[ -n $pi_api_key ]] || die "Pi DeepSeek credential is empty"
+    pi_environment=("DEEPSEEK_API_KEY=$pi_api_key")
+  else
+    pi_provider=openai-codex
+    command jq -e '.["openai-codex"] | type == "object"' "$credential_config" >/dev/null \
+      || die "Pi OpenAI Codex credential is missing"
+    command jq '{"openai-codex": .["openai-codex"]}' "$credential_config" \
+      > "$pi_home/auth.json"
+    command chmod 600 "$pi_home/auth.json"
+  fi
 
   command jq -n '{
     quietStartup: true,
@@ -77,14 +89,23 @@ if [[ $harness == pi ]]; then
     command cp "$model_file" "$pi_home/${model_file:t}"
   done
 
+  pi_prompt_arguments=()
+  if [[ -n ${BENCHMARK_INITIAL_PROMPT_FILE:-} ]]; then
+    initial_prompt_file=${BENCHMARK_INITIAL_PROMPT_FILE:A}
+    [[ -f $initial_prompt_file ]] || die "initial prompt not found: $initial_prompt_file"
+    initial_prompt=$(<"$initial_prompt_file")
+    [[ -n $initial_prompt ]] || die "initial prompt must not be empty"
+    pi_prompt_arguments=("$initial_prompt")
+  fi
+
   launch=(
     /usr/bin/env "${common_environment[@]}"
-    "DEEPSEEK_API_KEY=$pi_api_key"
+    "${pi_environment[@]}"
     "PI_CODING_AGENT_DIR=$pi_home"
     "PI_CODING_AGENT_SESSION_DIR=$pi_home/sessions"
     "PI_TELEMETRY=0"
     "$binary"
-    --provider deepseek
+    --provider "$pi_provider"
     --model "$model"
     --thinking "$reasoning"
     --no-extensions
@@ -94,27 +115,52 @@ if [[ $harness == pi ]]; then
     --no-context-files
     --no-approve
     --tui-mode regular
+    "${pi_prompt_arguments[@]}"
   )
-elif [[ $harness == codex ]]; then
-  (( $# >= 1 )) || die "Codex model catalog argument is missing"
-  model_catalog=${1:A}
-  shift
-  [[ -f $model_catalog ]] || die "Codex model catalog not found: $model_catalog"
-
-  # Older generated commands appended host MCP names. A case-local CODEX_HOME
-  # has no host MCP definitions, so those names must not create partial server
-  # entries. Ignore any legacy trailing names to keep printed commands usable.
-
+elif [[ $harness == codex || $harness == codex-openai ]]; then
   codex_home=$runtime_dir/codex
   command mkdir -p "$codex_home"
-  codex_profile=$codex_home/deepseek.config.toml
-  if [[ -L $codex_profile ]]; then
-    command unlink "$codex_profile"
-  elif [[ -e $codex_profile && ! -f $codex_profile ]]; then
-    die "Codex profile path is not a regular file: $codex_profile"
+  codex_model_arguments=(--model "$model")
+  codex_prompt_arguments=()
+
+  if [[ -n ${BENCHMARK_INITIAL_PROMPT_FILE:-} ]]; then
+    initial_prompt_file=${BENCHMARK_INITIAL_PROMPT_FILE:A}
+    [[ -f $initial_prompt_file ]] || die "initial prompt not found: $initial_prompt_file"
+    initial_prompt=$(<"$initial_prompt_file")
+    [[ -n $initial_prompt ]] || die "initial prompt must not be empty"
+    codex_prompt_arguments=("$initial_prompt")
   fi
-  command cp "$credential_config" "$codex_profile"
-  command chmod 600 "$codex_profile"
+
+  if [[ $harness == codex ]]; then
+    (( $# >= 1 )) || die "Codex model catalog argument is missing"
+    model_catalog=${1:A}
+    shift
+    [[ -f $model_catalog ]] || die "Codex model catalog not found: $model_catalog"
+
+    # Older generated commands appended host MCP names. A case-local CODEX_HOME
+    # has no host MCP definitions, so those names must not create partial server
+    # entries. Ignore any legacy trailing names to keep printed commands usable.
+    codex_profile=$codex_home/deepseek.config.toml
+    if [[ -L $codex_profile ]]; then
+      command unlink "$codex_profile"
+    elif [[ -e $codex_profile && ! -f $codex_profile ]]; then
+      die "Codex profile path is not a regular file: $codex_profile"
+    fi
+    command cp "$credential_config" "$codex_profile"
+    command chmod 600 "$codex_profile"
+
+    toml_model_catalog=${model_catalog//\\/\\\\}
+    toml_model_catalog=${toml_model_catalog//\"/\\\"}
+    codex_model_arguments=(
+      --profile deepseek
+      --model "$model"
+      -c "model_catalog_json=\"$toml_model_catalog\""
+    )
+  else
+    codex_auth=$codex_home/auth.json
+    command cp "$credential_config" "$codex_auth"
+    command chmod 600 "$codex_auth"
+  fi
 
   trust_root=$case_dir
   detected_root=$(command git -C "$case_dir" rev-parse --show-toplevel 2>/dev/null || true)
@@ -124,9 +170,6 @@ elif [[ $harness == codex ]]; then
 
   toml_trust_root=${trust_root//\\/\\\\}
   toml_trust_root=${toml_trust_root//\"/\\\"}
-  toml_model_catalog=${model_catalog//\\/\\\\}
-  toml_model_catalog=${toml_model_catalog//\"/\\\"}
-
   # Codex performs its trust check before normal CLI config overrides are
   # applied. Seed the disposable base config so the first launch is already
   # trusted and never needs to persist into the host profile.
@@ -141,9 +184,7 @@ elif [[ $harness == codex ]]; then
     /usr/bin/env "${common_environment[@]}"
     "CODEX_HOME=$codex_home"
     "$binary"
-    --profile deepseek
-    --model "$model"
-    -c "model_catalog_json=\"$toml_model_catalog\""
+    "${codex_model_arguments[@]}"
     -c "model_reasoning_effort=\"$reasoning\""
     -c 'project_doc_max_bytes=0'
     -c 'project_doc_fallback_filenames=[]'
@@ -171,6 +212,7 @@ elif [[ $harness == codex ]]; then
   launch+=(
     --dangerously-bypass-approvals-and-sandbox
     --no-alt-screen
+    "${codex_prompt_arguments[@]}"
   )
 else
   (( $# >= 1 )) || die "Pi credential helper argument is missing"

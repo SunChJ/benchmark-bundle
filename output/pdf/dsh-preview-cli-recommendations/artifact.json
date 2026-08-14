@@ -5,7 +5,7 @@
     "surface": "report",
     "title": "DSH 修改意见：Preview CLI 优化建议",
     "description": "A friendly, evidence-backed improvement plan for the DSH preview CLI, benchmarked against Pi and Codex using the same DeepSeek model tiers.",
-    "generatedAt": "2026-08-13T16:05:26Z",
+    "generatedAt": "2026-08-14T04:02:56Z",
     "sources": [
       {
         "id": "benchmark_analysis",
@@ -15,23 +15,26 @@
           "engine": "node",
           "id": "analyze-runs-v2",
           "language": "javascript",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Parses Pi, Codex, and DSH JSONL sessions; normalizes token/cache semantics, explicit waits, completion mode, retries, and tool outcomes; joins each session to its generated HTML.",
           "tables_used": [
             "runs/20260813193424/*/.benchmark-runtime/pi/sessions/*.jsonl",
             "runs/20260813195515/*/.benchmark-runtime/{pi,codex}/sessions/**/*.jsonl",
-            "runs/dsh/*/session.jsonl"
+            "runs/20260814101425/*/.benchmark-runtime/{codex,pi}/sessions/**/*.jsonl",
+            "runs/dsh/*/session.jsonl",
+            "analysis/dsh-error-audit-lib.mjs"
           ],
           "filters": [
             "Canonical prompt SHA-256 bee2dabb86385df8686e5f48fa5e9fd70d33acbf9b833f9c487114c725b8a48e",
-            "Twelve harness × model tier × effort cases; no sampling",
-            "One final HTML output per case"
+            "Twelve DeepSeek harness × model tier × effort cases plus six GPT-5.6 Sol control cases; no sampling",
+            "One final HTML output per case",
+            "Codex/Sol high and xhigh final-response HTML materialized byte-for-byte by analysis/materialize-codex-html.mjs"
           ],
           "metric_definitions": [
             "Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.",
             "Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.",
             "One-shot completion: final artifact delivered without a manual continuation message.",
-            "Tool failure rate: explicit error tool results divided by tool calls; incidence does not measure severity or task recovery.",
+            "Tool failure rate: observable actionable failed tool calls divided by tool calls. DSH includes harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.",
             "Total input tokens: uncached input plus cache-read input. Codex input includes cached tokens, so uncached input = input - cached input.",
             "Cache hit rate: cached input tokens divided by total input tokens.",
             "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset."
@@ -46,23 +49,49 @@
           "engine": "manual-reviewed",
           "id": "quality-rubric-v2",
           "language": "markdown",
-          "executed_at": "2026-08-13T16:05:26Z",
-          "description": "Scores all 12 outputs after 1280×720 browser QA of assembled/exploded states, console inspection, selected round trips, and source review.",
+          "executed_at": "2026-08-14T04:02:56Z",
+          "description": "Scores all 18 outputs after 1280×720 browser QA of assembled/exploded states, console inspection, selected round trips, and source review.",
           "tables_used": [
             "analysis/quality-assessment.md",
             "runs/20260813193424/*/*.html",
             "runs/20260813195515/*/*.html",
+            "runs/20260814101425/*/*.html",
             "runs/dsh/*/*.html"
           ],
           "filters": [
-            "All 12 outputs reviewed",
+            "All 18 outputs reviewed",
             "1280×720 viewport",
             "Exploded state triggered with Space after page load",
-            "Round trip checked for leading Pi/Codex candidates and DSH Flash/max and Pro/high"
+            "Round trip checked for leading Pi/Codex candidates, DSH Flash/max and Pro/high, and all six Sol controls"
           ],
           "metric_definitions": [
             "Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).",
             "Critical status overrides numeric ranking when a runtime or semantic geometry defect prevents faithful task completion."
+          ]
+        }
+      },
+      {
+        "id": "joined_results",
+        "label": "Joined performance and quality evidence",
+        "path": "analysis/chart-map.md",
+        "query": {
+          "engine": "deterministic-local-join",
+          "id": "case-performance-quality-v2",
+          "language": "javascript+markdown",
+          "executed_at": "2026-08-14T04:02:56Z",
+          "description": "Deterministic case-key join of normalized session metrics and browser-reviewed quality scores.",
+          "tables_used": [
+            "analysis/analyze-runs.mjs",
+            "analysis/quality-assessment.md",
+            "analysis/chart-map.md"
+          ],
+          "filters": [
+            "Inner join on exact case identifier",
+            "Eighteen matched rows; no missing cases and no sampling"
+          ],
+          "metric_definitions": [
+            "Performance and reliability fields use benchmark_analysis definitions.",
+            "Quality fields use the quality_review rubric and critical-defect override."
           ]
         }
       },
@@ -74,9 +103,9 @@
           "engine": "sqlite",
           "id": "case-evidence-v2",
           "language": "sql",
-          "sql": "-- Materialized, reviewed case-level evidence for the report artifact.\n-- Source metrics come from analyze-runs.mjs; quality fields come from quality-assessment.md.\nWITH cases(\n  case_name,\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\n) AS (\n  VALUES\n    ('codex-ds-flash-high', 'Codex', 'Flash', 'high', 1294.126, 21.5688, 21.5688, 0.0000, 2572715, 2552064, 20651, 0.9919730712496332, 32311, 12142, 20, 25, 6, 0.2400000000000000, 1, 'one-shot', 0, 0, 0, 0, 94, 'Pass', 'Best overall; strong exploded view, slight lower-label crowding.', 'runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html'),\n    ('pi-pro-high', 'Pi', 'Pro', 'high', 1049.822, 17.4970, 17.4970, 0.0000, 673469, 657408, 16061, 0.9761518347540866, 90884, 79122, 8, 7, 1, 0.1428571428571429, 1, 'one-shot', 0, 0, 0, 0, 91, 'Pass', 'Best composition; minor right/bottom label crowding.', 'runs/20260813195515/pi-pro-high/floppy-exploded.html'),\n    ('pi-flash-max', 'Pi', 'Flash', 'max', 845.870, 14.0978, 14.0978, 0.0000, 2624424, 2604032, 20392, 0.9922299140687633, 93837, 69119, 29, 28, 2, 0.0714285714285714, 1, 'one-shot', 0, 0, 0, 0, 89, 'Pass', 'Correct geometry; exploded top/bottom framing clips.', 'runs/20260813193424/pi-flash-max/floppy-exploded-view.html'),\n    ('ds-harness-flash-max', 'DSH', 'Flash', 'max', 2736.075, 45.6013, 66.8914, 21.2901, 3714005, 3658624, 55381, 0.9850886038117881, 118683, 98023, 31, 34, 2, 0.0588235294117647, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 88, 'Pass', 'Best DSH; round trip passes, minor viewport clipping.', 'runs/dsh/ds-harness-flash-max/floppy-blueprint.html'),\n    ('ds-harness-pro-high', 'DSH', 'Pro', 'high', 2419.179, 40.3197, 61.6077, 21.2881, 1637168, 1601024, 36144, 0.9779228521446791, 111615, 95279, 15, 18, 0, 0.0000000000000000, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 87, 'Pass', 'Clean DSH round trip; central labels overlap.', 'runs/dsh/ds-harness-pro-high/floppy-exploded-blueprint.html'),\n    ('codex-ds-pro-high', 'Codex', 'Pro', 'high', 619.162, 10.3194, 10.3194, 0.0000, 756309, 737920, 18389, 0.9756858638466552, 53076, 32482, 15, 14, 2, 0.1428571428571429, 1, 'one-shot', 0, 0, 0, 0, 85, 'Pass', 'Fastest usable; correct geometry, minor top clipping.', 'runs/20260813195515/codex-ds-pro-high/index.html'),\n    ('ds-harness-flash-high', 'DSH', 'Flash', 'high', 2746.048, 45.7675, 78.0797, 32.3123, 5113143, 5081856, 31287, 0.9938810629782895, 111130, 85718, 49, 49, 4, 0.0816326530612245, 0, 'human-assisted (2 continues)', 2, 6, 4, 0, 79, 'Pass', 'Assembled shutter detached; exploded labels overlap.', 'runs/dsh/ds-harness-flash-high/floppy-exploded-blueprint.html'),\n    ('codex-ds-flash-max', 'Codex', 'Flash', 'max', 995.252, 16.5875, 16.5875, 0.0000, 1520846, 1507456, 13390, 0.9911956897674058, 70660, 46039, 23, 22, 7, 0.3181818181818182, 1, 'one-shot', 0, 0, 0, 0, 78, 'Pass', 'Complete; exploded framing over-zoomed and mislabelled.', 'runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html'),\n    ('ds-harness-pro-max', 'DSH', 'Pro', 'max', 4328.985, 72.1497, 104.6595, 32.5097, 11026683, 10995712, 30971, 0.9971912677638416, 175286, 127599, 75, 77, 3, 0.0389610389610390, 0, 'human-assisted (2 continues)', 2, 6, 5, 1, 72, 'Pass', 'Undersized scene; labels and vertical title clipped.', 'runs/dsh/ds-harness-pro-max/floppy-blueprint.html'),\n    ('pi-pro-max', 'Pi', 'Pro', 'max', 2076.601, 34.6100, 34.6100, 0.0000, 2912213, 2882176, 30037, 0.9896858505885386, 161557, 133661, 20, 19, 4, 0.2105263157894737, 1, 'one-shot', 0, 0, 0, 0, 64, 'Critical', 'Label fade-in throws; labels never render.', 'runs/20260813195515/pi-pro-max/floppy-blueprint.html'),\n    ('codex-ds-pro-max', 'Codex', 'Pro', 'max', 1902.947, 31.7158, 31.7158, 0.0000, 3529832, 3419008, 110824, 0.9686036049307729, 135505, 108138, 23, 32, 2, 0.0625000000000000, 1, 'one-shot', 0, 0, 0, 0, 53, 'Critical', 'Vertical shell caused by unrotated extrusions.', 'runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html'),\n    ('pi-flash-high', 'Pi', 'Flash', 'high', 1247.667, 20.7945, 20.7945, 0.0000, 3801287, 3781504, 19783, 0.9947957099792780, 102333, 79451, 41, 40, 6, 0.1500000000000000, 1, 'one-shot', 0, 0, 0, 0, 52, 'Critical', 'Vertical shell despite extensive self-tests.', 'runs/20260813193424/pi-flash-high/index.html')\n)\nSELECT\n  case_name AS \"case\",\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\nFROM cases;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
-          "description": "Returns the 12 reviewed case-level rows used by report charts and the detail table.",
+          "sql": "-- Materialized, reviewed case-level evidence for the report artifact.\n-- Source metrics come from analyze-runs.mjs; quality fields come from quality-assessment.md.\nWITH cases(\n  case_name,\n  harness,\n  model_tier,\n  effort,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  declared_tool_failures,\n  unflagged_command_failures,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  output_path\n) AS (\n  VALUES\n    ('pi-gpt56-sol-max', 'Pi', 'Sol', 'max', 657.812, 10.9635, 10.9635, 0.0000, 386528, 338432, 48096, 0.8755691696332478, 34247, 19090, 12, 12, 1, 0.0833333333333333, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 94, 'Pass', 'Excellent geometry and exploded composition; clean round trip, slight right-label crowding, and one recovered sandbox-denied check.', 'runs/20260814101425/pi-gpt56-sol-max/index.html'),\n    ('codex-ds-flash-high', 'Codex', 'Flash', 'high', 1294.126, 21.5688, 21.5688, 0.0000, 2572715, 2552064, 20651, 0.9919730712496332, 32311, 12142, 20, 25, 6, 0.2400000000000000, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 94, 'Pass', 'Best overall; strong exploded view, slight lower-label crowding.', 'runs/20260813195515/codex-ds-flash-high/floppy-disk-blueprint.html'),\n    ('codex-gpt56-sol-max', 'Codex', 'Sol', 'max', 826.173, 13.7696, 13.7696, 0.0000, 279693, 223744, 55949, 0.7999628163736668, 35483, 20490, 44, 6, 0, 0.0000000000000000, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 92, 'Pass', 'Strong exploded composition and clean round trip; assembled scene is undersized and only static checks ran in-session.', 'runs/20260814101425/codex-gpt56-sol-max/floppy_blueprint.html'),\n    ('pi-gpt56-sol-xhigh', 'Pi', 'Sol', 'xhigh', 623.985, 10.3997, 10.3997, 0.0000, 114769, 79872, 34897, 0.6959370561737055, 20915, 10016, 7, 6, 1, 0.1666666666666667, NULL, NULL, 1, 'one-shot', 0, 0, 1, 0, 92, 'Pass', 'Strong geometry and clean round trip; HD NOTCH clips, the exploded prompt stays visible, and transport/sandbox failures recover automatically.', 'runs/20260814101425/pi-gpt56-sol-xhigh/index.html'),\n    ('pi-pro-high', 'Pi', 'Pro', 'high', 1049.822, 17.4970, 17.4970, 0.0000, 673469, 657408, 16061, 0.9761518347540866, 90884, 79122, 8, 7, 1, 0.1428571428571429, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 91, 'Pass', 'Best composition; minor right/bottom label crowding.', 'runs/20260813195515/pi-pro-high/floppy-exploded.html'),\n    ('pi-gpt56-sol-high', 'Pi', 'Sol', 'high', 270.052, 4.5009, 4.5009, 0.0000, 84789, 61440, 23349, 0.7246222977037116, 13117, 4911, 5, 4, 0, 0.0000000000000000, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 90, 'Pass', 'Clean round trip and strong geometry; exploded labels overlap around the disk/hub and lower-right components.', 'runs/20260814101425/pi-gpt56-sol-high/index.html'),\n    ('pi-flash-max', 'Pi', 'Flash', 'max', 845.870, 14.0978, 14.0978, 0.0000, 2624424, 2604032, 20392, 0.9922299140687633, 93837, 69119, 29, 28, 2, 0.0714285714285714, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 89, 'Pass', 'Correct geometry; exploded top/bottom framing clips.', 'runs/20260813193424/pi-flash-max/floppy-exploded-view.html'),\n    ('ds-harness-flash-max', 'DSH', 'Flash', 'max', 2736.075, 45.6013, 66.8914, 21.2901, 3714005, 3658624, 55381, 0.9850886038117881, 118683, 98023, 31, 34, 7, 0.2058823529411765, 2, 5, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 88, 'Pass', 'Best DSH; round trip passes, minor viewport clipping.', 'runs/dsh/ds-harness-flash-max/floppy-blueprint.html'),\n    ('ds-harness-pro-high', 'DSH', 'Pro', 'high', 2419.179, 40.3197, 61.6077, 21.2881, 1637168, 1601024, 36144, 0.9779228521446791, 111615, 95279, 15, 18, 2, 0.1111111111111111, 0, 2, 0, 'human-assisted (2 continues)', 2, 4, 3, 1, 87, 'Pass', 'Clean DSH round trip; central labels overlap.', 'runs/dsh/ds-harness-pro-high/floppy-exploded-blueprint.html'),\n    ('codex-gpt56-sol-xhigh', 'Codex', 'Sol', 'xhigh', 628.319, 10.4720, 10.4720, 0.0000, 19472, 0, 19472, 0.0000000000000000, 18915, 8128, 24, 0, 0, NULL, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 86, 'Pass', 'Clean round trip and separated labels; top geometry and HD NOTCH clip, explicit 80 ms stagger is missing, and the response was not written or browser-tested in-session.', 'runs/20260814101425/codex-gpt56-sol-xhigh/sol-xhigh.html'),\n    ('codex-ds-pro-high', 'Codex', 'Pro', 'high', 619.162, 10.3194, 10.3194, 0.0000, 756309, 737920, 18389, 0.9756858638466552, 53076, 32482, 15, 14, 2, 0.1428571428571429, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 85, 'Pass', 'Fastest usable; correct geometry, minor top clipping.', 'runs/20260813195515/codex-ds-pro-high/index.html'),\n    ('codex-gpt56-sol-high', 'Codex', 'Sol', 'high', 261.487, 4.3581, 4.3581, 0.0000, 15321, 0, 15321, 0.0000000000000000, 14243, 4492, 9, 0, 0, NULL, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 83, 'Pass', 'Clean round trip and strong geometry; top label clips, prompt stays visible, and the response was not written to disk.', 'runs/20260814101425/codex-gpt56-sol-high/sol-high.html'),\n    ('ds-harness-flash-high', 'DSH', 'Flash', 'high', 2746.048, 45.7675, 78.0797, 32.3123, 5113143, 5081856, 31287, 0.9938810629782895, 111130, 85718, 49, 49, 9, 0.1836734693877551, 4, 5, 0, 'human-assisted (2 continues)', 2, 6, 4, 0, 79, 'Pass', 'Assembled shutter detached; exploded labels overlap.', 'runs/dsh/ds-harness-flash-high/floppy-exploded-blueprint.html'),\n    ('codex-ds-flash-max', 'Codex', 'Flash', 'max', 995.252, 16.5875, 16.5875, 0.0000, 1520846, 1507456, 13390, 0.9911956897674058, 70660, 46039, 23, 22, 7, 0.3181818181818182, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 78, 'Pass', 'Complete; exploded framing over-zoomed and mislabelled.', 'runs/20260813195515/codex-ds-flash-max/floppy_blueprint.html'),\n    ('ds-harness-pro-max', 'DSH', 'Pro', 'max', 4328.985, 72.1497, 104.6595, 32.5097, 11026683, 10995712, 30971, 0.9971912677638416, 175286, 127599, 75, 77, 5, 0.0649350649350649, 3, 2, 0, 'human-assisted (2 continues)', 2, 6, 5, 1, 72, 'Pass', 'Undersized scene; labels and vertical title clipped.', 'runs/dsh/ds-harness-pro-max/floppy-blueprint.html'),\n    ('pi-pro-max', 'Pi', 'Pro', 'max', 2076.601, 34.6100, 34.6100, 0.0000, 2912213, 2882176, 30037, 0.9896858505885386, 161557, 133661, 20, 19, 4, 0.2105263157894737, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 64, 'Critical', 'Label fade-in throws; labels never render.', 'runs/20260813195515/pi-pro-max/floppy-blueprint.html'),\n    ('codex-ds-pro-max', 'Codex', 'Pro', 'max', 1902.947, 31.7158, 31.7158, 0.0000, 3529832, 3419008, 110824, 0.9686036049307729, 135505, 108138, 23, 32, 2, 0.0625000000000000, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 53, 'Critical', 'Vertical shell caused by unrotated extrusions.', 'runs/20260813195515/codex-ds-pro-max/floppy-disk-blueprint.html'),\n    ('pi-flash-high', 'Pi', 'Flash', 'high', 1247.667, 20.7945, 20.7945, 0.0000, 3801287, 3781504, 19783, 0.9947957099792780, 102333, 79451, 41, 40, 6, 0.1500000000000000, NULL, NULL, 1, 'one-shot', 0, 0, 0, 0, 52, 'Critical', 'Vertical shell despite extensive self-tests.', 'runs/20260813193424/pi-flash-high/index.html')\n)\nSELECT\n  case_name AS \"case\",\n  harness,\n  CASE model_tier WHEN 'Sol' THEN harness || ' / GPT-5.6 Sol' ELSE harness || ' / DeepSeek' END AS stack,\n  CASE\n    WHEN model_tier = 'Sol' THEN 'Sol · ' || harness\n    WHEN harness = 'Codex' THEN 'DS · Codex'\n    WHEN harness = 'Pi' THEN 'DS · Pi'\n    ELSE 'DS · DSH'\n  END AS stack_label,\n  CASE model_tier WHEN 'Sol' THEN 'OpenAI' ELSE 'DeepSeek' END AS model_family,\n  model_tier,\n  effort,\n  lower(harness) || '-' || lower(model_tier) || '/' || effort AS case_label,\n  duration_s,\n  duration_min,\n  wall_duration_min,\n  excluded_wait_min,\n  total_input_tokens,\n  cached_input_tokens,\n  uncached_input_tokens,\n  cache_hit_rate,\n  output_tokens,\n  reasoning_output_tokens,\n  model_calls,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  declared_tool_failures,\n  unflagged_command_failures,\n  one_shot_completed,\n  completion_mode,\n  manual_continues,\n  stream_timeouts,\n  llm_retries,\n  permission_changes,\n  quality_score,\n  critical_status,\n  observed_result,\n  CASE\n    WHEN harness = 'Codex' AND model_tier = 'Sol' AND effort IN ('high', 'xhigh')\n      THEN 'Final-response HTML; materialized by benchmark wrapper'\n    ELSE 'Written by the model through harness tools'\n  END AS artifact_delivery,\n  output_path\nFROM cases;\n",
+          "executed_at": "2026-08-14T04:02:56Z",
+          "description": "Returns the 18 reviewed case-level rows used by report charts and the detail table.",
           "tables_used": [
             "analysis/report-source.sql",
             "analysis/analyze-runs.mjs",
@@ -84,14 +113,14 @@
           ],
           "filters": [
             "Canonical prompt SHA-256 bee2dabb86385df8686e5f48fa5e9fd70d33acbf9b833f9c487114c725b8a48e",
-            "Twelve completed artifacts; no sampling",
+            "Eighteen completed artifacts; no sampling",
             "Deterministic join on exact case identifier"
           ],
           "metric_definitions": [
             "Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.",
             "Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.",
             "One-shot completion: final artifact delivered without a manual continuation message.",
-            "Tool failure rate: explicit error tool results divided by tool calls; incidence does not measure severity or task recovery.",
+            "Tool failure rate: observable actionable failed tool calls divided by tool calls. DSH includes harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.",
             "Total input tokens: uncached input plus cache-read input. Codex input includes cached tokens, so uncached input = input - cached input.",
             "Cache hit rate: cached input tokens divided by total input tokens.",
             "Output tokens include reasoning tokens; reasoning output is the reported reasoning subset.",
@@ -108,21 +137,23 @@
           "engine": "sqlite",
           "id": "harness-reliability-v1",
           "language": "sql",
-          "sql": "-- Harness-level reliability summary derived from the 12 reviewed case rows.\nWITH harness_summary(\n  harness,\n  cases,\n  one_shot_completed,\n  one_shot_rate,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  llm_retries,\n  stream_timeouts,\n  manual_continues,\n  permission_changes\n) AS (\n  VALUES\n    ('Codex', 4, 4, 1.0, 93, 17, 0.1827956989247312, 0, 0, 0, 0),\n    ('Pi', 4, 4, 1.0, 94, 13, 0.1382978723404255, 0, 0, 0, 0),\n    ('DSH', 4, 0, 0.0, 178, 9, 0.0505617977528090, 15, 20, 8, 3)\n)\nSELECT * FROM harness_summary;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
-          "description": "Aggregates the 12 reviewed cases to harness-level one-shot completion, explicit tool-result failures, retries, timeouts, continuations, and permission changes.",
+          "sql": "-- Execution-stack reliability summary derived from the 18 reviewed case rows.\nWITH harness_summary(\n  stack,\n  stack_label,\n  harness,\n  model_family,\n  cases,\n  one_shot_completed,\n  one_shot_rate,\n  tool_calls,\n  tool_failures,\n  tool_failure_rate,\n  llm_retries,\n  stream_timeouts,\n  manual_continues,\n  permission_changes\n) AS (\n  VALUES\n    ('Codex / GPT-5.6 Sol', 'Sol · Codex', 'Codex', 'OpenAI', 3, 3, 1.0, 6, 0, 0.0, 0, 0, 0, 0),\n    ('Pi / GPT-5.6 Sol', 'Sol · Pi', 'Pi', 'OpenAI', 3, 3, 1.0, 22, 2, 0.0909090909090909, 1, 0, 0, 0),\n    ('Codex / DeepSeek', 'DS · Codex', 'Codex', 'DeepSeek', 4, 4, 1.0, 93, 17, 0.1827956989247312, 0, 0, 0, 0),\n    ('Pi / DeepSeek', 'DS · Pi', 'Pi', 'DeepSeek', 4, 4, 1.0, 94, 13, 0.1382978723404255, 0, 0, 0, 0),\n    ('DSH / DeepSeek', 'DS · DSH', 'DSH', 'DeepSeek', 4, 0, 0.0, 178, 23, 0.1292134831460674, 15, 20, 8, 3)\n)\nSELECT * FROM harness_summary;\n",
+          "executed_at": "2026-08-14T04:02:56Z",
+          "description": "Aggregates the 18 reviewed cases to execution-stack one-shot completion, observable actionable tool failures, retries, timeouts, continuations, and permission changes.",
           "tables_used": [
             "analysis/harness-summary.sql",
             "analysis/report-source.sql"
           ],
           "filters": [
-            "Four cases per harness",
-            "Twelve total cases; no sampling"
+            "Twelve DeepSeek cases plus six GPT-5.6 Sol controls",
+            "Five execution stacks; no sampling"
           ],
           "metric_definitions": [
             "One-shot rate = cases completed without manual continuation divided by cases.",
-            "Tool failure rate = explicit error tool results divided by tool calls.",
-            "LLM retries and stream timeout occurrences are observable only in DSH session logs under the available schemas."
+            "Tool failure rate = observable actionable failed tool calls divided by tool calls. DSH includes 9 harness-declared failures and 14 non-zero command exits or runtime exceptions that were not flagged as errors.",
+            "Pi and Codex use the failure signals observable in their available schemas, so cross-harness failure-rate comparisons are directional rather than strictly schema-identical.",
+            "Codex/Sol high and xhigh returned HTML directly with zero tool calls; Sol stack rates aggregate all three effort levels for each harness.",
+            "LLM retries are observable in Pi and DSH session logs; stream timeout occurrences are observable only in DSH under the available schemas."
           ]
         }
       },
@@ -134,7 +165,7 @@
           "engine": "node",
           "id": "dsh-error-audit-v1",
           "language": "javascript",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Audits every DSH tool-result envelope and separates harness-declared failures from command/runtime failures embedded in successful results.",
           "tables_used": [
             "analysis/audit-dsh-errors.mjs",
@@ -161,7 +192,7 @@
           "id": "dsh-lifecycle-events-v1",
           "language": "sql",
           "sql": "-- DSH lifecycle event totals from the four benchmark session logs.\nWITH lifecycle_events(event, count, interpretation) AS (\n  VALUES\n    ('Stream timeout occurrence', 20, 'Turn continuity signal'),\n    ('LLM retry', 15, 'Automatic retry attempt'),\n    ('Manual continuation', 8, 'Unattended completion failure'),\n    ('Permission mode change', 3, 'Preflight contract gap')\n)\nSELECT * FROM lifecycle_events;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Materializes stream timeout, retry, continuation, and permission-transition totals across four DSH sessions.",
           "tables_used": [
             "analysis/dsh-lifecycle-events.sql",
@@ -187,7 +218,7 @@
           "id": "dsh-error-classes-v1",
           "language": "sql",
           "sql": "-- Reviewed actionable DSH execution failures from the four benchmark session logs.\nWITH error_classes(\n  error_class,\n  incidents,\n  affected_cases,\n  failure_surface,\n  recommended_handler\n) AS (\n  VALUES\n    ('Non-zero command exit', 10, 4, 'Command/runtime', 'Return a typed error envelope with exit code and stderr'),\n    ('Stale file revision', 5, 3, 'Harness-declared', 'Re-read and replay once with a revision token'),\n    ('Runtime exception without failure flag', 4, 1, 'Command/runtime', 'Detect process failure and set the tool error flag'),\n    ('Image capability mismatch', 3, 3, 'Harness-declared', 'Hide read_image and route to render_validate'),\n    ('Unsupported regex feature', 1, 1, 'Harness-declared', 'Return an executable compatibility hint')\n)\nSELECT * FROM error_classes;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Materializes 23 observable actionable failures by class, affected cases, and failure surface.",
           "tables_used": [
             "analysis/dsh-error-classes.sql",
@@ -214,7 +245,7 @@
           "engine": "manual-reviewed",
           "id": "dsh-preview-cli-recommendations-v1",
           "language": "markdown",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Evidence-backed preview CLI recommendations, prioritized roadmap, and proposed acceptance gates.",
           "tables_used": [
             "analysis/dsh-preview-cli-recommendations.md",
@@ -240,7 +271,7 @@
           "id": "dsh-recommendation-plan-v1",
           "language": "sql",
           "sql": "-- Prioritized DSH preview CLI recommendation plan.\nWITH recommendations(priority, workstream, proposed_change, exit_signal) AS (\n  VALUES\n    ('P0', 'Turn continuity', 'Progress-aware watchdog, same-turn resume, idempotent steps, atomic completion marker.', 'Synthetic stream interruptions recover without user continuation.'),\n    ('P0', 'Capability negotiation', 'Resolve model capabilities before the turn and hide incompatible tools.', 'Zero permanent capability-mismatch tool calls.'),\n    ('P0', 'Visual validation', 'Add a text/JSON render_validate oracle for console, DOM, viewport, state and image statistics.', 'Pure-text models verify visual tasks without direct image input.'),\n    ('P1', 'Typed tool recovery', 'Normalize non-zero exits/runtime exceptions into typed failures; make stale edits revision-aware.', 'No actionable subprocess failure is returned as success.'),\n    ('P1', 'Headless preflight', 'Resolve sandbox, approval, paths, browser and tool support before the first model call.', 'No mid-run permission changes in non-interactive runs.'),\n    ('P1', 'Observability', 'Emit a stable JSON summary for versions, timings, tokens/cache, retries, errors and exit reason.', 'Every benchmark run produces a schema-valid summary.'),\n    ('P2', 'Reproducibility and UX', 'Pin resolved CLI integrity, add dsh resume, and explain automatic recovery states.', 'A run can be reproduced and resumed from its manifest.')\n)\nSELECT * FROM recommendations;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Materializes the prioritized roadmap and preview exit signal for each workstream.",
           "tables_used": [
             "analysis/dsh-recommendation-plan.sql",
@@ -263,7 +294,7 @@
           "id": "dsh-preview-exit-gates-v1",
           "language": "sql",
           "sql": "-- Proposed acceptance gates for moving DSH beyond preview reliability.\nWITH acceptance_gates(gate, observed, preview_exit_target, measurement) AS (\n  VALUES\n    ('One-shot completion', '0/4 DSH cases', '4/4 regression; then >=95% across n>=20', 'Completed artifact without manual continuation'),\n    ('Manual continuation', '8 messages', '0 in unattended mode', 'Continuation messages after canonical prompt'),\n    ('Capability mismatch', '3 read_image failures', '0 after preflight', 'Permanent mismatch calls by class'),\n    ('Recovery fixtures', 'Not measured', '100% within bounded retry budget', 'Injected stream and stale-edit scenarios'),\n    ('Outcome normalization', '14 failures not flagged as tool errors', '0 unflagged actionable failures', 'Non-zero exits and runtime exceptions vs tool status'),\n    ('Permission stability', '3 mid-run changes', '0 in headless mode', 'Permission-mode transitions per run'),\n    ('Telemetry completeness', 'No stable summary contract', '100% schema-valid summaries', 'JSON schema validation and explicit exit reason')\n)\nSELECT * FROM acceptance_gates;\n",
-          "executed_at": "2026-08-13T16:05:26Z",
+          "executed_at": "2026-08-14T04:02:56Z",
           "description": "Materializes observed baselines, proposed targets, and measurement definitions.",
           "tables_used": [
             "analysis/dsh-preview-exit-gates.sql",
@@ -596,6 +627,12 @@
         "layout": "full"
       },
       {
+        "id": "sol_control_boundary",
+        "type": "markdown",
+        "sourceId": "joined_results",
+        "body": "## 第二套同模型对照：Sol 交叉验证 Pi/Codex harness 影响\n\nPi/Codex × GPT-5.6 Sol high/xhigh/max 六组都使用同一 prompt：Codex/high 为 4.4 分钟、质量 83/100、0 次工具调用；Codex/max 为 13.8 分钟、质量 92/100、6 次工具调用；Codex/xhigh 为 10.5 分钟、质量 86/100、0 次工具调用；Pi/high 为 4.5 分钟、质量 90/100、4 次工具调用；Pi/max 为 11.0 分钟、质量 94/100、12 次工具调用；Pi/xhigh 为 10.4 分钟、质量 92/100、6 次工具调用。三个 effort 档位均提供 Pi/Codex matched pair，工具路径、验证深度与恢复行为随 harness 改变。这组 matched control 支持“同一模型也会因 harness 改变执行路径”的工程假设；由于没有 DSH/Sol case，DSH 的直接归因仍以上面的 12-case DeepSeek 三方矩阵为准。"
+      },
+      {
         "id": "error_accounting",
         "type": "markdown",
         "sourceId": "dsh_error_audit",
@@ -694,12 +731,12 @@
       {
         "id": "scope_methodology",
         "type": "markdown",
-        "body": "## Scope, definitions, and methodology\n\n证据来自相同 canonical prompt 的 12 次执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。"
+        "body": "## Scope, definitions, and methodology\n\n核心证据来自相同 canonical prompt 的 12 次 DeepSeek 执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1；另有 Pi/Codex × GPT-5.6 Sol high/xhigh/max 六次 matched control，用于交叉检查 Pi/Codex harness 行为。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。"
       },
       {
         "id": "limitations",
         "type": "markdown",
-        "body": "## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Pi/Codex 的成功也不代表主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。"
+        "body": "## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Sol 的 Pi/Codex 比较是 matched harness 对照，但不包含 DSH，也不能与 DeepSeek 聚合。Pi/Codex 的成功也不代表 DeepSeek 主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。"
       },
       {
         "id": "further_questions",
@@ -711,14 +748,18 @@
   "snapshot": {
     "version": 1,
     "status": "ready",
-    "generatedAt": "2026-08-13T16:05:26Z",
+    "generatedAt": "2026-08-14T04:02:56Z",
     "datasets": {
       "dsh_cases": [
         {
           "case": "ds-harness-pro-high",
           "harness": "DSH",
+          "stack": "DSH / DeepSeek",
+          "stack_label": "DS · DSH",
+          "model_family": "DeepSeek",
           "model_tier": "Pro",
           "effort": "high",
+          "case_label": "Pro/high",
           "duration_s": 2419.179,
           "duration_min": 40.3197,
           "wall_duration_min": 61.6077,
@@ -732,9 +773,11 @@
           "reasoning_output_tokens": 95279,
           "model_calls": 15,
           "tool_calls": 18,
-          "tool_failures": 0,
-          "tool_failure_rate": 0,
-          "tool_error_summary": "0/18",
+          "tool_failures": 2,
+          "tool_failure_rate": 0.1111111111111111,
+          "declared_tool_failures": 0,
+          "unflagged_command_failures": 2,
+          "tool_error_summary": "2/18",
           "call_summary": "15/18",
           "one_shot_completed": false,
           "one_shot_rate": 0,
@@ -748,8 +791,8 @@
           "critical_status": "Pass",
           "quality_status": "87 · Pass",
           "observed_result": "Clean DSH round trip; central labels overlap.",
+          "artifact_delivery": "Written by the model through harness tools",
           "output_path": "runs/dsh/ds-harness-pro-high/floppy-exploded-blueprint.html",
-          "case_label": "Pro/high",
           "duration_pair": "40.3 / 61.6 min",
           "retry_timeout_pair": "3 / 4",
           "actionable_failures": 2,
@@ -760,8 +803,12 @@
         {
           "case": "ds-harness-flash-max",
           "harness": "DSH",
+          "stack": "DSH / DeepSeek",
+          "stack_label": "DS · DSH",
+          "model_family": "DeepSeek",
           "model_tier": "Flash",
           "effort": "max",
+          "case_label": "Flash/max",
           "duration_s": 2736.075,
           "duration_min": 45.6013,
           "wall_duration_min": 66.8914,
@@ -775,9 +822,11 @@
           "reasoning_output_tokens": 98023,
           "model_calls": 31,
           "tool_calls": 34,
-          "tool_failures": 2,
-          "tool_failure_rate": 0.058823529411764705,
-          "tool_error_summary": "2/34",
+          "tool_failures": 7,
+          "tool_failure_rate": 0.20588235294117646,
+          "declared_tool_failures": 2,
+          "unflagged_command_failures": 5,
+          "tool_error_summary": "7/34",
           "call_summary": "31/34",
           "one_shot_completed": false,
           "one_shot_rate": 0,
@@ -791,8 +840,8 @@
           "critical_status": "Pass",
           "quality_status": "88 · Pass",
           "observed_result": "Best DSH; round trip passes, minor viewport clipping.",
+          "artifact_delivery": "Written by the model through harness tools",
           "output_path": "runs/dsh/ds-harness-flash-max/floppy-blueprint.html",
-          "case_label": "Flash/max",
           "duration_pair": "45.6 / 66.9 min",
           "retry_timeout_pair": "3 / 4",
           "actionable_failures": 7,
@@ -803,8 +852,12 @@
         {
           "case": "ds-harness-flash-high",
           "harness": "DSH",
+          "stack": "DSH / DeepSeek",
+          "stack_label": "DS · DSH",
+          "model_family": "DeepSeek",
           "model_tier": "Flash",
           "effort": "high",
+          "case_label": "Flash/high",
           "duration_s": 2746.048,
           "duration_min": 45.7675,
           "wall_duration_min": 78.0797,
@@ -818,9 +871,11 @@
           "reasoning_output_tokens": 85718,
           "model_calls": 49,
           "tool_calls": 49,
-          "tool_failures": 4,
-          "tool_failure_rate": 0.08163265306122448,
-          "tool_error_summary": "4/49",
+          "tool_failures": 9,
+          "tool_failure_rate": 0.1836734693877551,
+          "declared_tool_failures": 4,
+          "unflagged_command_failures": 5,
+          "tool_error_summary": "9/49",
           "call_summary": "49/49",
           "one_shot_completed": false,
           "one_shot_rate": 0,
@@ -834,8 +889,8 @@
           "critical_status": "Pass",
           "quality_status": "79 · Pass",
           "observed_result": "Assembled shutter detached; exploded labels overlap.",
+          "artifact_delivery": "Written by the model through harness tools",
           "output_path": "runs/dsh/ds-harness-flash-high/floppy-exploded-blueprint.html",
-          "case_label": "Flash/high",
           "duration_pair": "45.8 / 78.1 min",
           "retry_timeout_pair": "4 / 6",
           "actionable_failures": 9,
@@ -846,8 +901,12 @@
         {
           "case": "ds-harness-pro-max",
           "harness": "DSH",
+          "stack": "DSH / DeepSeek",
+          "stack_label": "DS · DSH",
+          "model_family": "DeepSeek",
           "model_tier": "Pro",
           "effort": "max",
+          "case_label": "Pro/max",
           "duration_s": 4328.985,
           "duration_min": 72.1497,
           "wall_duration_min": 104.6595,
@@ -861,9 +920,11 @@
           "reasoning_output_tokens": 127599,
           "model_calls": 75,
           "tool_calls": 77,
-          "tool_failures": 3,
-          "tool_failure_rate": 0.03896103896103896,
-          "tool_error_summary": "3/77",
+          "tool_failures": 5,
+          "tool_failure_rate": 0.06493506493506493,
+          "declared_tool_failures": 3,
+          "unflagged_command_failures": 2,
+          "tool_error_summary": "5/77",
           "call_summary": "75/77",
           "one_shot_completed": false,
           "one_shot_rate": 0,
@@ -877,8 +938,8 @@
           "critical_status": "Pass",
           "quality_status": "72 · Pass",
           "observed_result": "Undersized scene; labels and vertical title clipped.",
+          "artifact_delivery": "Written by the model through harness tools",
           "output_path": "runs/dsh/ds-harness-pro-max/floppy-blueprint.html",
-          "case_label": "Pro/max",
           "duration_pair": "72.1 / 104.7 min",
           "retry_timeout_pair": "5 / 6",
           "actionable_failures": 5,
@@ -889,7 +950,10 @@
       ],
       "harness_summary": [
         {
+          "stack": "Codex / DeepSeek",
+          "stack_label": "DS · Codex",
           "harness": "Codex",
+          "model_family": "DeepSeek",
           "cases": 4,
           "one_shot_completed": 4,
           "one_shot_rate": 1,
@@ -902,7 +966,10 @@
           "permission_changes": 0
         },
         {
+          "stack": "Pi / DeepSeek",
+          "stack_label": "DS · Pi",
           "harness": "Pi",
+          "model_family": "DeepSeek",
           "cases": 4,
           "one_shot_completed": 4,
           "one_shot_rate": 1,
@@ -915,13 +982,16 @@
           "permission_changes": 0
         },
         {
+          "stack": "DSH / DeepSeek",
+          "stack_label": "DS · DSH",
           "harness": "DSH",
+          "model_family": "DeepSeek",
           "cases": 4,
           "one_shot_completed": 0,
           "one_shot_rate": 0,
           "tool_calls": 178,
-          "tool_failures": 9,
-          "tool_failure_rate": 0.05056179775280899,
+          "tool_failures": 23,
+          "tool_failure_rate": 0.12921348314606743,
           "llm_retries": 15,
           "stream_timeouts": 20,
           "manual_continues": 8,

@@ -1,8 +1,10 @@
 # DeepSeek CLI Harness Benchmark
 
 This repository is a reproducible benchmark bundle for comparing CLI harnesses
-running the same DeepSeek models and reasoning tiers. It contains the canonical
-prompt, raw Pi/Codex/DSH session metadata, generated implementations,
+running the same DeepSeek models and reasoning tiers. Six Pi/Codex × GPT-5.6
+Sol high/xhigh/max controls provide a same-model cross-harness baseline without being
+mixed into the DeepSeek aggregate. The bundle contains the
+canonical prompt, raw Pi/Codex/DSH session metadata, generated implementations,
 browser-reviewed quality evidence, normalization scripts, and two self-contained
 HTML reports.
 
@@ -13,7 +15,7 @@ are preserved as benchmark evidence.
 
 ## Reports
 
-1. [DeepSeek CLI Harness benchmark report](output/pdf/deepseek-cli-harness-report/report.html) — the primary Pi vs Codex vs DSH comparison across completion time, one-shot completion, input/cache behavior, tool failures, and implementation quality.
+1. [DeepSeek CLI Harness benchmark report](output/pdf/deepseek-cli-harness-report/report.html) — the primary 12-case Pi vs Codex vs DSH matched-model comparison plus six Pi/Codex × GPT-5.6 Sol controls across completion time, one-shot completion, input/cache behavior, tool failures, and implementation quality.
 2. [DSH preview CLI recommendations](output/pdf/dsh-preview-cli-recommendations/report.html) — a focused, friendly review of DSH's recovery semantics, capability negotiation, tool contracts, visual validation, and observability roadmap.
 
 Both reports are delivered as self-contained HTML. Their reviewed
@@ -22,8 +24,8 @@ PDF copies are intentionally not retained.
 
 ![Adjusted completion time vs implementation quality](assets/adjusted-completion-time-vs-quality.png)
 
-`F/P` means DeepSeek V4 Flash/Pro, `H/M` means high/max reasoning effort, and
-color identifies the CLI harness. DSH adjusted time excludes explicit
+Point labels use complete `cli-model/reasoning` names such as `codex-sol/high`,
+`pi-pro/max`, and `dsh-flash/high`; color identifies the CLI harness. DSH adjusted time excludes explicit
 disconnect and retry waits; use the primary report for definitions and caveats.
 
 ## Evidence and metadata map
@@ -37,7 +39,7 @@ reviewed projections of this evidence, not replacements for it.
 | Pi session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/pi/sessions/*.jsonl` | Model messages, tool calls/results, token/cache usage, and timing events. |
 | Codex session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/codex/sessions/**/*.jsonl` | Rollout events, tool outcomes, token/cache usage, and timing events. |
 | DSH session metadata | `runs/dsh/<case>/session.jsonl` | Turn lifecycle, retries, sandbox changes, tool calls/results, and usage data. |
-| Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations, Pi session exports, and DSH preview images. |
+| Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations, browser QA images, Pi session exports, and DSH preview images. |
 | Normalized case metrics | [`analysis/analyze-runs.mjs`](analysis/analyze-runs.mjs) | Reconciles the three session schemas into comparable case-level metrics. |
 | Quality review | [`analysis/quality-assessment.md`](analysis/quality-assessment.md) | Browser-reviewed rubric, critical defects, and scoring rationale. |
 | DSH failure audit | [`analysis/audit-dsh-errors.mjs`](analysis/audit-dsh-errors.mjs) | Reconciles harness-declared failures with non-zero exits and runtime exceptions. |
@@ -106,6 +108,12 @@ pbpaste | ./prepare.sh -
 - `codex-ds-flash-max`
 - `codex-ds-pro-high`
 - `codex-ds-pro-max`
+- `codex-gpt56-sol-high`
+- `codex-gpt56-sol-xhigh`
+- `codex-gpt56-sol-max`
+- `pi-gpt56-sol-high`
+- `pi-gpt56-sol-xhigh`
+- `pi-gpt56-sol-max`
 - `claude-ds-flash-high`
 - `claude-ds-flash-max`
 - `claude-ds-pro-high`
@@ -125,11 +133,15 @@ files, and project-local approval resources. Its credential is resolved once
 through Pi's own auth command before launch and passed only to the sandboxed
 process; settings, model caches, and sessions remain case-local. The host's
 `~/.pi/agent/settings.json` and `auth.json` are never writable.
-Codex uses the existing `deepseek` profile through a case-local `CODEX_HOME`,
-overrides model and reasoning effort on the command line, disables project
-instruction ingestion and optional integrations, and does not load the host
-`config.toml` or its MCP server definitions. Its profile is copied into the
-case instead of symlinked, so TUI persistence cannot reach the host profile.
+DeepSeek-backed Codex cases use the existing `deepseek` profile through a
+case-local `CODEX_HOME`. Codex GPT-5.6 Sol control cases copy only the ChatGPT
+auth file into the same isolated layout. Pi GPT-5.6 Sol cases copy only the
+`openai-codex` credential into their case-local `auth.json`. Both select
+[`gpt-5.6-sol`](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
+directly. Both paths override reasoning effort on the command line, disable project instruction
+ingestion and optional integrations, and do not load the host `config.toml` or
+its MCP server definitions. Credentials and profiles are copied instead of
+symlinked, so TUI persistence cannot reach the host configuration.
 The detected Git root is pre-marked trusted only in the disposable base config
 to skip the startup trust prompt; the outer Seatbelt still prevents writes
 outside the case. No incomplete MCP overrides are generated in the clean

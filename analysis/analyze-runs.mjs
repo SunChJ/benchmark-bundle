@@ -35,9 +35,18 @@ function parseCaseName(caseName) {
     : caseName.startsWith('codex-')
       ? 'Codex'
       : 'Pi';
-  const model = caseName.includes('-pro-') ? 'DeepSeek V4 Pro' : 'DeepSeek V4 Flash';
-  const effort = caseName.endsWith('-max') ? 'max' : 'high';
-  return { harness, model, effort };
+  const model = caseName.includes('-gpt56-sol-')
+    ? 'GPT-5.6 Sol'
+    : caseName.includes('-pro-')
+      ? 'DeepSeek V4 Pro'
+      : 'DeepSeek V4 Flash';
+  const effort = caseName.endsWith('-xhigh')
+    ? 'xhigh'
+    : caseName.endsWith('-max')
+      ? 'max'
+      : 'high';
+  const stack = model === 'GPT-5.6 Sol' ? `${harness} / GPT-5.6 Sol` : `${harness} / DeepSeek`;
+  return { harness, stack, model, effort };
 }
 
 function parseJsonLines(text) {
@@ -102,6 +111,9 @@ function summarizePi(events) {
   );
   const toolResults = messages.filter((event) => event.message?.role === 'toolResult');
   const toolFailureCount = toolResults.filter((event) => event.message?.isError === true).length;
+  const modelFailureCount = assistantMessages.filter(
+    (event) => event.message?.stopReason === 'error',
+  ).length;
 
   const totalInputTokens = usage.uncachedInputTokens + usage.cachedInputTokens;
   return {
@@ -122,7 +134,7 @@ function summarizePi(events) {
     completionMode: 'one-shot',
     manualContinueCount: 0,
     streamTimeoutCount: 0,
-    llmRetryCount: 0,
+    llmRetryCount: modelFailureCount,
     permissionChangeCount: 0,
     startedAt: firstUser.timestamp,
     completedAt: lastAssistant.timestamp,

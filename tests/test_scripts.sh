@@ -14,7 +14,16 @@ CLAUDE_OUTSIDE=/private/tmp/benchmark-sandbox-claude-$$
 command mkdir -p "$FAKE_HOME/.pi/agent" "$FAKE_HOME/.codex" \
   "$FAKE_HOME/.claude" "$BIN_DIR"
 
-print -r -- '{"deepseek":{"type":"api_key","key":"test"}}' > "$FAKE_HOME/.pi/agent/auth.json"
+print -r -- '{
+  "deepseek":{"type":"api_key","key":"test"},
+  "openai-codex":{
+    "type":"oauth",
+    "access":"test-access",
+    "refresh":"test-refresh",
+    "expires":4102444800000,
+    "accountId":"test-account"
+  }
+}' > "$FAKE_HOME/.pi/agent/auth.json"
 print -r -- '{"sentinel":"must-not-change"}' > "$FAKE_HOME/.pi/agent/settings.json"
 print -r -- '{"models":[]}' > "$FAKE_HOME/.pi/agent/models.json"
 print -r -- '{"models":[]}' > "$FAKE_HOME/.pi/agent/models-store.json"
@@ -30,7 +39,10 @@ wire_api = "responses"
 experimental_bearer_token = "test"
 ' > "$FAKE_HOME/.codex/deepseek.config.toml"
 print -r -- '{"models":[]}' > "$FAKE_HOME/.codex/models.json"
+print -r -- '{"auth_mode":"chatgpt","tokens":{"access_token":"test"}}' \
+  > "$FAKE_HOME/.codex/auth.json"
 codex_profile_sha=$(command shasum -a 256 "$FAKE_HOME/.codex/deepseek.config.toml" | command awk '{print $1}')
+codex_auth_sha=$(command shasum -a 256 "$FAKE_HOME/.codex/auth.json" | command awk '{print $1}')
 
 print -r -- '{"sentinel":"must-not-change"}' > "$FAKE_HOME/.claude/settings.json"
 claude_settings_sha=$(command shasum -a 256 "$FAKE_HOME/.claude/settings.json" | command awk '{print $1}')
@@ -67,7 +79,11 @@ print -r -- "$HOME" > codex-home.txt
 print -r -- "$CODEX_HOME" > codex-runtime.txt
 print -r -- "$TMPDIR" > codex-tmp.txt
 print -rl -- "$@" > codex-args.txt
-print -r -- "# case-local write" >> "$CODEX_HOME/deepseek.config.toml"
+if [[ -f "$CODEX_HOME/deepseek.config.toml" ]]; then
+  print -r -- "# case-local write" >> "$CODEX_HOME/deepseek.config.toml"
+else
+  print -r -- "# case-local write" >> "$CODEX_HOME/config.toml"
+fi
 if command mkdir "__CODEX_OUTSIDE__" 2>/dev/null; then
   print -u2 -r -- "outside write unexpectedly succeeded"
   exit 81
@@ -110,6 +126,7 @@ common_environment=(
   "PI_AUTH_FILE=$FAKE_HOME/.pi/agent/auth.json"
   "CODEX_PROFILE_FILE=$FAKE_HOME/.codex/deepseek.config.toml"
   "CODEX_MODEL_CATALOG=$FAKE_HOME/.codex/models.json"
+  "CODEX_AUTH_FILE=$FAKE_HOME/.codex/auth.json"
 )
 
 prepared=$(command env $common_environment "$ROOT/prepare.sh")
@@ -118,6 +135,10 @@ run_dir=$(<"$RUNS_ROOT/.current")
 [[ -f $run_dir/prompts.md ]]
 [[ $(<"$run_dir/prompts.md") == "Create the requested artifact." ]]
 print -r -- "$prepared" | command grep -Fq './run-case codex-ds-pro-max'
+print -r -- "$prepared" | command grep -Fq './run-case codex-gpt56-sol-max'
+print -r -- "$prepared" | command grep -Fq './run-case codex-gpt56-sol-xhigh'
+print -r -- "$prepared" | command grep -Fq './run-case pi-gpt56-sol-max'
+print -r -- "$prepared" | command grep -Fq './run-case pi-gpt56-sol-xhigh'
 print -r -- "$prepared" | command grep -Fq './run-case claude-ds-pro-max'
 
 pi_output=$(command env $common_environment "$ROOT/run-case" pi-flash-high)
@@ -160,6 +181,42 @@ for expected in \
   command grep -Fxq -- "$expected" "$pi_args"
 done
 ! command grep -Fxq -- '--offline' "$pi_args"
+
+pi_sol_output=$(command env $common_environment "$ROOT/run-case" pi-gpt56-sol-xhigh)
+pi_sol_case_dir=$run_dir/pi-gpt56-sol-xhigh
+[[ -d $pi_sol_case_dir ]]
+[[ -z $(command ls -A "$pi_sol_case_dir") ]]
+print -r -- "$pi_sol_output" | command grep -Fq \
+  "cd $pi_sol_case_dir && $ROOT/run-sandboxed-case pi-openai"
+
+pi_sol_command=$(print -r -- "$pi_sol_output" | command sed -n '/^Run this command:$/ { n; p; }')
+command env $common_environment "BENCHMARK_INITIAL_PROMPT_FILE=$prompt" \
+  /bin/zsh -c "$pi_sol_command"
+
+[[ $(<"$pi_sol_case_dir/pi-cwd.txt") == "$pi_sol_case_dir" ]]
+[[ $(<"$pi_sol_case_dir/pi-home.txt") == "$FAKE_HOME" ]]
+[[ $(<"$pi_sol_case_dir/pi-runtime.txt") == "$pi_sol_case_dir/.benchmark-runtime/pi" ]]
+[[ $(<"$pi_sol_case_dir/pi-tmp.txt") == "$pi_sol_case_dir/.benchmark-runtime/tmp/" ]]
+[[ -f $pi_sol_case_dir/.benchmark-runtime/pi/auth.json ]]
+[[ ! -L $pi_sol_case_dir/.benchmark-runtime/pi/auth.json ]]
+command jq -e 'keys == ["openai-codex"]' \
+  "$pi_sol_case_dir/.benchmark-runtime/pi/auth.json" >/dev/null
+[[ $(command shasum -a 256 "$FAKE_HOME/.pi/agent/auth.json" | command awk '{print $1}') == "$pi_auth_sha" ]]
+pi_sol_args=$pi_sol_case_dir/pi-args.txt
+for expected in \
+  '--provider' 'openai-codex' \
+  '--model' 'gpt-5.6-sol' \
+  '--thinking' 'xhigh' \
+  '--no-extensions' \
+  '--no-skills' \
+  '--no-prompt-templates' \
+  '--no-themes' \
+  '--no-context-files' \
+  '--no-approve' \
+  '--tui-mode' 'regular' \
+  'Create the requested artifact.'; do
+  command grep -Fxq -- "$expected" "$pi_sol_args"
+done
 
 codex_output=$(command env $common_environment "$ROOT/run-case" codex-ds-pro-max)
 codex_case_dir=$run_dir/codex-ds-pro-max
@@ -205,6 +262,46 @@ for expected in \
 done
 command grep -Fxq -- "projects.\"$codex_case_dir\".trust_level=\"trusted\"" "$codex_args"
 ! command grep -Fq -- 'mcp_servers.' "$codex_args"
+
+sol_output=$(command env $common_environment "$ROOT/run-case" codex-gpt56-sol-xhigh)
+sol_case_dir=$run_dir/codex-gpt56-sol-xhigh
+[[ -d $sol_case_dir ]]
+[[ -z $(command ls -A "$sol_case_dir") ]]
+print -r -- "$sol_output" | command grep -Fq \
+  "cd $sol_case_dir && $ROOT/run-sandboxed-case codex-openai"
+
+sol_command=$(print -r -- "$sol_output" | command sed -n '/^Run this command:$/ { n; p; }')
+command env $common_environment "BENCHMARK_INITIAL_PROMPT_FILE=$prompt" \
+  /bin/zsh -c "$sol_command"
+
+[[ $(<"$sol_case_dir/codex-cwd.txt") == "$sol_case_dir" ]]
+[[ $(<"$sol_case_dir/codex-home.txt") == "$FAKE_HOME" ]]
+[[ $(<"$sol_case_dir/codex-runtime.txt") == "$sol_case_dir/.benchmark-runtime/codex" ]]
+[[ $(<"$sol_case_dir/codex-tmp.txt") == "$sol_case_dir/.benchmark-runtime/tmp/" ]]
+[[ -f $sol_case_dir/.benchmark-runtime/codex/auth.json ]]
+[[ ! -L $sol_case_dir/.benchmark-runtime/codex/auth.json ]]
+[[ -f $sol_case_dir/.benchmark-runtime/codex/config.toml ]]
+[[ $(command shasum -a 256 "$FAKE_HOME/.codex/auth.json" | command awk '{print $1}') == "$codex_auth_sha" ]]
+sol_args=$sol_case_dir/codex-args.txt
+for expected in \
+  '--model' 'gpt-5.6-sol' \
+  'model_reasoning_effort="xhigh"' \
+  'project_doc_max_bytes=0' \
+  'project_doc_fallback_filenames=[]' \
+  'features.plugins=false' \
+  'features.skill_search=false' \
+  'features.multi_agent=false' \
+  'features.workspace_dependencies=false' \
+  'features.computer_use=false' \
+  'tools.web_search=false' \
+  '--dangerously-bypass-approvals-and-sandbox' \
+  '--no-alt-screen'; do
+  command grep -Fxq -- "$expected" "$sol_args"
+done
+! command grep -Fxq -- '--profile' "$sol_args"
+! command grep -Fq -- 'model_catalog_json=' "$sol_args"
+! command grep -Fq -- 'mcp_servers.' "$sol_args"
+command grep -Fxq -- 'Create the requested artifact.' "$sol_args"
 
 claude_output=$(command env $common_environment "$ROOT/run-case" claude-ds-pro-max)
 claude_case_dir=$run_dir/claude-ds-pro-max
@@ -260,5 +357,14 @@ if command env $common_environment "$ROOT/run-case" unknown >/dev/null 2>&1; the
   print -u2 -r -- "unknown case unexpectedly succeeded"
   exit 1
 fi
+
+materialize_case=$TEMP_ROOT/materialize-case
+command mkdir -p "$materialize_case/.benchmark-runtime/codex/sessions/2026/08/14"
+command jq -nc --arg html '<!DOCTYPE html>\n<html><body>fixture</body></html>' \
+  '{type:"event_msg",payload:{type:"task_complete",last_agent_message:$html}}' \
+  > "$materialize_case/.benchmark-runtime/codex/sessions/2026/08/14/session.jsonl"
+command node "$ROOT/analysis/materialize-codex-html.mjs" \
+  "$materialize_case" fixture.html >/dev/null
+[[ $(<"$materialize_case/fixture.html") == $'<!DOCTYPE html>\n<html><body>fixture</body></html>' ]]
 
 print -r -- "All shell benchmark tests passed."

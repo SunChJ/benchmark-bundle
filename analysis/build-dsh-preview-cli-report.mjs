@@ -32,6 +32,9 @@ const clonedSource = (id) => {
 };
 
 const cases = base.snapshot.datasets.cases;
+const solControls = cases
+  .filter((row) => row.model_tier === 'Sol')
+  .sort((a, b) => a.harness.localeCompare(b.harness) || a.effort.localeCompare(b.effort));
 const dshCases = cases
   .filter((row) => row.harness === 'DSH')
   .map((row) => {
@@ -51,7 +54,15 @@ const dshCases = cases
   })
   .sort((a, b) => a.duration_min - b.duration_min);
 
-const harnessSummary = base.snapshot.datasets.harness_summary;
+const harnessSummary = base.snapshot.datasets.harness_summary.filter(
+  (row) => row.model_family === 'DeepSeek',
+);
+const solControlDescription = solControls
+  .map(
+    (row) =>
+      `${row.harness}/${row.effort} 为 ${row.duration_min.toFixed(1)} 分钟、质量 ${row.quality_score}/100、${row.tool_calls} 次工具调用`,
+  )
+  .join('；');
 const lifecycleEvents = [
   { event: 'Stream timeout occurrence', count: 20, interpretation: 'Turn continuity signal' },
   { event: 'LLM retry', count: 15, interpretation: 'Automatic retry attempt' },
@@ -342,6 +353,7 @@ const artifact = {
     sources: [
       clonedSource('benchmark_analysis'),
       clonedSource('quality_review'),
+      clonedSource('joined_results'),
       clonedSource('report_query'),
       clonedSource('harness_summary_query'),
       errorAuditSource,
@@ -511,6 +523,12 @@ const artifact = {
       },
       { id: 'one_shot_visual', type: 'chart', chartId: 'one_shot_chart', layout: 'full' },
       {
+        id: 'sol_control_boundary',
+        type: 'markdown',
+        sourceId: 'joined_results',
+        body: `## 第二套同模型对照：Sol 交叉验证 Pi/Codex harness 影响\n\nPi/Codex × GPT-5.6 Sol high/xhigh/max 六组都使用同一 prompt：${solControlDescription}。三个 effort 档位均提供 Pi/Codex matched pair，工具路径、验证深度与恢复行为随 harness 改变。这组 matched control 支持“同一模型也会因 harness 改变执行路径”的工程假设；由于没有 DSH/Sol case，DSH 的直接归因仍以上面的 12-case DeepSeek 三方矩阵为准。`,
+      },
+      {
         id: 'error_accounting',
         type: 'markdown',
         sourceId: 'dsh_error_audit',
@@ -579,12 +597,12 @@ const artifact = {
       {
         id: 'scope_methodology',
         type: 'markdown',
-        body: '## Scope, definitions, and methodology\n\n证据来自相同 canonical prompt 的 12 次执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。',
+        body: '## Scope, definitions, and methodology\n\n核心证据来自相同 canonical prompt 的 12 次 DeepSeek 执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1；另有 Pi/Codex × GPT-5.6 Sol high/xhigh/max 六次 matched control，用于交叉检查 Pi/Codex harness 行为。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。',
       },
       {
         id: 'limitations',
         type: 'markdown',
-        body: '## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Pi/Codex 的成功也不代表主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。',
+        body: '## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Sol 的 Pi/Codex 比较是 matched harness 对照，但不包含 DSH，也不能与 DeepSeek 聚合。Pi/Codex 的成功也不代表 DeepSeek 主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。',
       },
       {
         id: 'further_questions',

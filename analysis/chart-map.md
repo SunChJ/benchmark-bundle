@@ -12,9 +12,9 @@
 
 ## One-shot completion rate
 
-- Question: Does each harness complete the same prompt without manual continuation?
+- Question: Does each execution stack complete the same prompt without manual continuation?
 - Dataset: `harness_summary`
-- Fields: `harness`, `one_shot_rate`
+- Fields: `stack_label`, `stack`, `one_shot_rate`
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
 
@@ -22,11 +22,12 @@
 
 - Question: What share of tool calls produced an observable actionable failure?
 - Dataset: `harness_summary`
-- Fields: `harness`, `tool_failure_rate`, `tool_failures`, `tool_calls`
+- Fields: `stack_label`, `stack`, `tool_failure_rate`, `tool_failures`, `tool_calls`
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
 - DSH definition: harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.
 - Caveat: This is an incidence metric, not a severity metric. Pi and Codex use the failure signals observable in their respective schemas, so the cross-harness comparison is directional rather than strictly schema-identical.
+- Control handling: Sol stack rates aggregate the high, xhigh, and max controls for each harness. Codex/Sol high and xhigh made zero tool calls and therefore do not add to that stack's denominator.
 
 ## Input token cache composition
 
@@ -51,14 +52,15 @@
 - Question: Which cases lie on the practical speed-quality frontier?
 - Dataset: `cases`
 - Fields: `case_label`, `case`, `duration_min`, `quality_score`, `harness`, `completion_mode`, `critical_status`
-- Mark: Scatter with direct labels
-- Label format: `Model–Reasoning`; the report explicitly decodes `F/P = Flash/Pro` and `H/M = high/max` directly below the chart, while harness is encoded by color.
+- Mark: Static PNG scatter embedded in a custom HTML block because the native report chart does not support a non-zero quantitative-axis baseline.
+- Label format: full `cli-model/reasoning` names such as `codex-sol/high`, `pi-pro/max`, and `dsh-flash/high`; harness is also encoded by color.
+- Scale: The Y-axis is fixed at 50–100. The X-axis uses a base-2 logarithmic scale with visible ticks at 5, 10, 20, 40, and 80 minutes, expanding the low-duration cluster without hiding the long tail. All 18 points remain visible.
 - Sort: Not applicable
-- Source: Deterministic join of `analysis/analyze-runs.mjs` and `analysis/quality-assessment.md` by `case`
+- Source: Deterministic join of `analysis/analyze-runs.mjs` and `analysis/quality-assessment.md` by `case`; rendered by `analysis/render-frontier-chart.mjs`.
 
 ## Visual policy
 
-- Harness is the only semantic color encoding in the scatter plot.
+- CLI harness is the only semantic color encoding in the scatter plot; model family/tier remains encoded in the direct label.
 - Cache component is the only semantic color encoding in the stacked chart.
 - Other ranked charts use a neutral sequential palette.
-- All 12 cases remain visible; no top-N truncation is applied.
+- All 18 cases remain visible; no top-N truncation is applied.

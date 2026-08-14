@@ -10,6 +10,7 @@ CLAUDE_BINARY=${CLAUDE_BINARY:-${commands[claude]:-}}
 PI_AUTH_FILE=${PI_AUTH_FILE:-$HOME/.pi/agent/auth.json}
 CODEX_PROFILE_FILE=${CODEX_PROFILE_FILE:-$HOME/.codex/deepseek.config.toml}
 CODEX_MODEL_CATALOG=${CODEX_MODEL_CATALOG:-$HOME/.codex/models.json}
+CODEX_AUTH_FILE=${CODEX_AUTH_FILE:-$HOME/.codex/auth.json}
 
 die() {
   print -u2 -r -- "error: $*"
@@ -24,10 +25,16 @@ case $case_name in
   pi-flash-max)        harness=pi;    model=deepseek-v4-flash; reasoning=max ;;
   pi-pro-high)         harness=pi;    model=deepseek-v4-pro;   reasoning=high ;;
   pi-pro-max)          harness=pi;    model=deepseek-v4-pro;   reasoning=max ;;
+  pi-gpt56-sol-high)   harness=pi-openai; model=gpt-5.6-sol;    reasoning=high ;;
+  pi-gpt56-sol-xhigh)  harness=pi-openai; model=gpt-5.6-sol;    reasoning=xhigh ;;
+  pi-gpt56-sol-max)    harness=pi-openai; model=gpt-5.6-sol;    reasoning=max ;;
   codex-ds-flash-high) harness=codex; model=deepseek-v4-flash; reasoning=high ;;
   codex-ds-flash-max)  harness=codex; model=deepseek-v4-flash; reasoning=max ;;
   codex-ds-pro-high)   harness=codex; model=deepseek-v4-pro;   reasoning=high ;;
   codex-ds-pro-max)    harness=codex; model=deepseek-v4-pro;   reasoning=max ;;
+  codex-gpt56-sol-high) harness=codex-openai; model=gpt-5.6-sol; reasoning=high ;;
+  codex-gpt56-sol-xhigh) harness=codex-openai; model=gpt-5.6-sol; reasoning=xhigh ;;
+  codex-gpt56-sol-max)  harness=codex-openai; model=gpt-5.6-sol; reasoning=max ;;
   claude-ds-flash-high) harness=claude; model=deepseek-v4-flash;   reasoning=high ;;
   claude-ds-flash-max)  harness=claude; model=deepseek-v4-flash;   reasoning=max ;;
   claude-ds-pro-high)   harness=claude; model='deepseek-v4-pro[1m]'; reasoning=high ;;
@@ -53,12 +60,12 @@ case_entries=("$case_dir"/*(DN))
 (( ${#case_entries} == 0 )) \
   || die "case directory is not empty; execute ./prepare.sh for a fresh run: $case_dir"
 
-if [[ $harness == pi ]]; then
+if [[ $harness == pi || $harness == pi-openai ]]; then
   [[ -n $PI_BINARY && -x $PI_BINARY ]] || die "pi executable not found"
   [[ -f $PI_AUTH_FILE ]] || die "pi auth file not found: $PI_AUTH_FILE"
   launch=(
     "$SCRIPT_DIR/run-sandboxed-case"
-    pi
+    "$harness"
     "$case_dir"
     "$PI_BINARY"
     "$model"
@@ -79,6 +86,19 @@ elif [[ $harness == codex ]]; then
     "$reasoning"
     "$CODEX_PROFILE_FILE"
     "$CODEX_MODEL_CATALOG"
+  )
+elif [[ $harness == codex-openai ]]; then
+  [[ -n $CODEX_BINARY && -x $CODEX_BINARY ]] || die "codex executable not found"
+  [[ -f $CODEX_AUTH_FILE ]] || die "Codex auth file not found: $CODEX_AUTH_FILE"
+
+  launch=(
+    "$SCRIPT_DIR/run-sandboxed-case"
+    codex-openai
+    "$case_dir"
+    "$CODEX_BINARY"
+    "$model"
+    "$reasoning"
+    "$CODEX_AUTH_FILE"
   )
 else
   [[ -n $CLAUDE_BINARY && -x $CLAUDE_BINARY ]] \

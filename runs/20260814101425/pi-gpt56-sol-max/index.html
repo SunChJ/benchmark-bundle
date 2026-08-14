@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FIG_001 — 3.5&quot; Floppy Disk Exploded Blueprint</title>
+
+  <style>
+    :root {
+      --paper: #f5f7fa;
+      --blue: #4169e1;
+      --blue-soft: rgba(65, 105, 225, 0.58);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background-color: var(--paper);
+      color: var(--blue);
+      font-family: "Courier New", Courier, monospace;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      box-shadow: inset 0 0 120px rgba(62, 80, 124, 0.075);
+    }
+
+    #webgl,
+    #webgl canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .part-label {
+      position: relative;
+      padding: 3px 6px 3px 13px;
+      border-left: 1px solid rgba(65, 105, 225, 0.72);
+      background: rgba(245, 247, 250, 0.76);
+      color: #4169e1;
+      font: 12px/1.15 "Courier New", Courier, monospace;
+      letter-spacing: 0.045em;
+      white-space: nowrap;
+      opacity: 0;
+      transform: translate(7px, -50%);
+      transition: opacity 0.4s ease;
+      text-shadow: 0 0 5px rgba(245, 247, 250, 0.95);
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .part-label::before {
+      content: "";
+      position: absolute;
+      left: -3px;
+      top: calc(50% - 2px);
+      width: 4px;
+      height: 4px;
+      background: #4169e1;
+    }
+
+    .side-caption {
+      position: fixed;
+      top: 50%;
+      z-index: 30;
+      color: rgba(65, 105, 225, 0.76);
+      font: 12px/1 "Courier New", Courier, monospace;
+      letter-spacing: 0.34em;
+      writing-mode: vertical-rl;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    #figure-id {
+      left: 18px;
+      transform: translateY(-50%) rotate(180deg);
+    }
+
+    #object-name {
+      right: 18px;
+      transform: translateY(-50%);
+    }
+
+    .side-caption::before,
+    .side-caption::after {
+      content: "";
+      display: block;
+      width: 1px;
+      height: 46px;
+      margin: 12px auto;
+      background: rgba(65, 105, 225, 0.35);
+    }
+
+    #plate-header {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      z-index: 30;
+      transform: translateX(-50%);
+      color: rgba(65, 105, 225, 0.42);
+      font: 10px/1 "Courier New", Courier, monospace;
+      letter-spacing: 0.28em;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    #bottom-ui {
+      position: fixed;
+      left: 50%;
+      bottom: 12px;
+      z-index: 30;
+      width: min(620px, calc(100vw - 80px));
+      transform: translateX(-50%);
+      text-align: center;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    #space-hint {
+      color: rgba(65, 105, 225, 0.64);
+      font: 12px/1.2 "Courier New", Courier, monospace;
+      letter-spacing: 0.19em;
+      opacity: 1;
+      transition: opacity 0.35s ease;
+      animation: breathe 2.6s ease-in-out infinite;
+    }
+
+    #space-hint.is-hidden {
+      opacity: 0;
+      animation-play-state: paused;
+    }
+
+    #control-help {
+      margin-top: 7px;
+      color: rgba(65, 105, 225, 0.42);
+      font: 9px/1.1 "Courier New", Courier, monospace;
+      letter-spacing: 0.12em;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: 0.38; }
+      50% { opacity: 0.82; }
+    }
+
+    @media (max-width: 700px) {
+      .part-label { font-size: 10px; }
+      #plate-header { display: none; }
+      #figure-id { left: 8px; }
+      #object-name { right: 8px; }
+    }
+  </style>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="webgl" aria-label="3.5 inch floppy disk exploded technical blueprint"></main>
+
+  <div id="plate-header">EXPLODED ASSEMBLY / ORTHOGRAPHIC TECHNICAL PLATE</div>
+  <div id="figure-id" class="side-caption">FIG_001</div>
+  <div id="object-name" class="side-caption">[ 3.5&quot; FLOPPY DISK ]</div>
+
+  <div id="bottom-ui">
+    <div id="space-hint">PRESS [ SPACE ] TO EXPLODE</div>
+    <div id="control-help">LMB: ORBIT · WHEEL: ZOOM · RMB: PAN</div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import {
+      CSS2DObject,
+      CSS2DRenderer
+    } from "three/addons/renderers/CSS2DRenderer.js";
+
+    // -------------------------------------------------------------------------
+    // BLUEPRINT CONSTANTS
+    // -------------------------------------------------------------------------
+    const BLUE = 0x4169e1;
+    const BLUE_CSS = "#4169E1";
+    const PALE_BLUE = 0xe8efff;
+    const GROOVE_BLUE = 0xd7e3fb;
+    const MAGNETIC_BLUE = 0x7b9df8;
+    const METAL_BLUE_GREY = 0x4a5568;
+
+    const SHELL_SIZE = 60;
+    const SHELL_HALF = SHELL_SIZE / 2;
+    const SHELL_CHAMFER = 3;
+
+    /*
+      One shared magnetic-head channel definition is reused by all three parts.
+      World/local convention: X runs along the floppy front edge; Z points to
+      the front (+Z). The shutter's long axis is X.
+
+      The 6-unit window edge is parallel to the shutter's 22-unit long edge;
+      the 14-unit window edge is perpendicular to it. Its center is shifted
+      left to X=-5, never centered on the shutter.
+    */
+    const HEAD_CHANNEL = Object.freeze({
+      x: -5,
+      z: 22,
+      width: 6,
+      depth: 14
+    });
+
+    const SHUTTER_ASSEMBLED = Object.freeze({ x: 0, y: -1.5, z: 22 });
+    const WRITE_NOTCH = Object.freeze({ x: 24.5, z: -24.5, width: 3, depth: 3 });
+
+    const scene = new THREE.Scene();
+    const mount = document.getElementById("webgl");
+    const hint = document.getElementById("space-hint");
+
+    let camera;
+    let renderer;
+    let labelRenderer;
+    let controls;
+
+    const groups = {};
+    const parts = [];
+    const callouts = [];
+    const connectorLines = [];
+    const annotationTimers = [];
+    const allAnnotationLines = [];
+
+    // Required state machine: assembled → exploding → exploded → collapsing.
+    let animState = "assembled";
+    let animationElapsed = 0;
+    let collapseLeadIn = 0;
+
+    const ANIMATION_DURATION = 3000;
+    const STAGGER = 80;
+    const COLLAPSE_LABEL_LEAD = 420;
+    let maxPartDelay = 0;
+    let partMotionDuration = ANIMATION_DURATION;
+
+    const clock = new THREE.Clock();
+
+    init();
+    animate();
+
+    function init() {
+      createDotGridBackground();
+      setupRenderers();
+      setupCamera();
+      setupControls();
+      buildAssembly();
+      setupParts();
+      setupConnectors();
+      setupCallouts();
+      hideLabels(true);
+
+      window.addEventListener("resize", onResize);
+      window.addEventListener("keydown", onKeyDown);
+    }
+
+    // -------------------------------------------------------------------------
+    // SCENE / RENDERING
+    // -------------------------------------------------------------------------
+    function createDotGridBackground() {
+      // The repeating blueprint dot texture is drawn by Canvas, then used as CSS.
+      const tile = document.createElement("canvas");
+      const size = 32;
+      tile.width = size;
+      tile.height = size;
+      const ctx = tile.getContext("2d");
+      ctx.clearRect(0, 0, size, size);
+      ctx.fillStyle = "rgba(65, 105, 225, 0.16)";
+      ctx.beginPath();
+      ctx.arc(2, 2, 1.05, 0, Math.PI * 2);
+      ctx.fill();
+      document.body.style.backgroundImage = `url(${tile.toDataURL("image/png")})`;
+      document.body.style.backgroundRepeat = "repeat";
+      document.body.style.backgroundSize = `${size}px ${size}px`;
+    }
+
+    function setupRenderers() {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance"
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      mount.appendChild(renderer.domElement);
+
+      labelRenderer = new CSS2DRenderer();
+      labelRenderer.setSize(window.innerWidth, window.innerHeight);
+      labelRenderer.domElement.style.position = "absolute";
+      labelRenderer.domElement.style.inset = "0";
+      labelRenderer.domElement.style.pointerEvents = "none";
+      mount.appendChild(labelRenderer.domElement);
+    }
+
+    function setupCamera() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const frustumHeight = 142;
+      camera = new THREE.OrthographicCamera(
+        (-frustumHeight * aspect) / 2,
+        (frustumHeight * aspect) / 2,
+        frustumHeight / 2,
+        -frustumHeight / 2,
+        0.1,
+        1000
+      );
+      camera.position.set(100, 80, 100);
+      camera.zoom = 1;
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+    }
+
+    // Required DCC-style camera interaction.
+    function setupControls() {
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.075;
+      controls.enableRotate = true;
+      controls.enablePan = true;
+      controls.enableZoom = true; // The mouse wheel remains an active dolly input.
+      controls.screenSpacePanning = true;
+      controls.minZoom = 0.68;
+      controls.maxZoom = 2.5;
+
+      controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+
+      // Keep panning useful without allowing the drawing to be lost entirely.
+      controls.addEventListener("change", () => {
+        const oldTarget = controls.target.clone();
+        controls.target.x = THREE.MathUtils.clamp(controls.target.x, -34, 34);
+        controls.target.y = THREE.MathUtils.clamp(controls.target.y, -22, 22);
+        controls.target.z = THREE.MathUtils.clamp(controls.target.z, -34, 34);
+        const correction = controls.target.clone().sub(oldTarget);
+        camera.position.add(correction);
+      });
+
+      renderer.domElement.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+      });
+
+      controls.update();
+    }
+
+    function onResize() {
+      const aspect = window.innerWidth / window.innerHeight;
+      const frustumHeight = 142;
+      camera.left = (-frustumHeight * aspect) / 2;
+      camera.right = (frustumHeight * aspect) / 2;
+      camera.top = frustumHeight / 2;
+      camera.bottom = -frustumHeight / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      labelRenderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // -------------------------------------------------------------------------
+    // GEOMETRY HELPERS
+    // -------------------------------------------------------------------------
+    function createChamferedShellShape() {
+      const h = SHELL_HALF;
+      const c = SHELL_CHAMFER;
+      const shape = new THREE.Shape();
+      shape.moveTo(-h + c, -h);
+      shape.lineTo(h - c, -h);
+      shape.lineTo(h, -h + c);
+      shape.lineTo(h, h - c);
+      shape.lineTo(h - c, h);
+      shape.lineTo(-h + c, h);
+      shape.lineTo(-h, h - c);
+      shape.lineTo(-h, -h + c);
+      shape.closePath();
+      return shape;
+    }
+
+    function rectangularHole(cx, cz, width, depth) {
+      // Clockwise winding marks this Path as a hole in a CCW outer Shape.
+      const path = new THREE.Path();
+      path.moveTo(cx - width / 2, cz - depth / 2);
+      path.lineTo(cx - width / 2, cz + depth / 2);
+      path.lineTo(cx + width / 2, cz + depth / 2);
+      path.lineTo(cx + width / 2, cz - depth / 2);
+      path.closePath();
+      return path;
+    }
+
+    function circularHole(cx, cz, radius) {
+      const path = new THREE.Path();
+      path.absarc(cx, cz, radius, 0, Math.PI * 2, true);
+      return path;
+    }
+
+    function extrudeHorizontal(shape, thickness, curveSegments = 48) {
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: thickness,
+        steps: 1,
+        bevelEnabled: false,
+        curveSegments
+      });
+      // ExtrudeGeometry starts in XY and grows along +Z. Center its depth, then
+      // rotate it into the XZ ground plane so extrusion thickness becomes Y.
+      geometry.translate(0, 0, -thickness / 2);
+      geometry.rotateX(Math.PI / 2);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    function makeManagedMaterial(color = PALE_BLUE) {
+      const material = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        depthWrite: true
+      });
+      material.userData.opacityManaged = true;
+      return material;
+    }
+
+    function makeEdgeMaterial({ opacity = 0.96, depthTest = true } = {}) {
+      return new THREE.LineBasicMaterial({
+        color: BLUE,
+        transparent: opacity < 1,
+        opacity,
+        linewidth: 1.35,
+        depthTest
+      });
+    }
+
+    function addEdgedMesh(group, geometry, options = {}) {
+      const material = options.material || makeManagedMaterial(options.color ?? PALE_BLUE);
+      if (options.opacityManaged === false) {
+        material.userData.opacityManaged = false;
+      }
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = options.name || "BLUEPRINT_MESH";
+      mesh.position.copy(options.position || new THREE.Vector3());
+      mesh.renderOrder = options.renderOrder || 0;
+      group.add(mesh);
+
+      if (options.edges !== false) {
+        const edgeGeometry = new THREE.EdgesGeometry(
+          geometry,
+          options.thresholdAngle ?? 18
+        );
+        const edges = new THREE.LineSegments(
+          edgeGeometry,
+          makeEdgeMaterial({
+            opacity: options.edgeOpacity ?? 0.98,
+            depthTest: options.edgeDepthTest ?? true
+          })
+        );
+        edges.name = `${mesh.name}_EDGES`;
+        edges.position.copy(mesh.position);
+        edges.renderOrder = (options.renderOrder || 0) + 2;
+        group.add(edges);
+      }
+      return mesh;
+    }
+
+    function addBlueprintBox(group, size, position, name, color = GROOVE_BLUE) {
+      return addEdgedMesh(
+        group,
+        new THREE.BoxGeometry(size.x, size.y, size.z),
+        { name, color, position, thresholdAngle: 12, renderOrder: 1 }
+      );
+    }
+
+    function makeStructuralLine(points, options = {}) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: BLUE,
+        transparent: options.opacity !== undefined && options.opacity < 1,
+        opacity: options.opacity ?? 0.94,
+        depthTest: options.depthTest ?? true
+      });
+      const line = options.segments
+        ? new THREE.LineSegments(geometry, material)
+        : new THREE.Line(geometry, material);
+      line.renderOrder = options.renderOrder ?? 6;
+      return line;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.1 TOP SHELL — COMPOSITE GROUP
+    // -------------------------------------------------------------------------
+    function createTopShell() {
+      const group = new THREE.Group();
+      group.name = "TOP_SHELL_GROUP";
+
+      const shellShape = createChamferedShellShape();
+
+      // (a) True HD notch hole at the rear-left corner.
+      shellShape.holes.push(rectangularHole(-24.5, -24.5, 4, 4));
+
+      // (d) True through-hole; this exact shared channel is also used below.
+      shellShape.holes.push(
+        rectangularHole(
+          HEAD_CHANNEL.x,
+          HEAD_CHANNEL.z,
+          HEAD_CHANNEL.width,
+          HEAD_CHANNEL.depth
+        )
+      );
+
+      addEdgedMesh(group, extrudeHorizontal(shellShape, 2), {
+        name: "TOP_SHELL_BODY",
+        color: PALE_BLUE,
+        thresholdAngle: 16
+      });
+
+      // (b) Label recess: a thin inset plate, separately outlined.
+      addBlueprintBox(
+        group,
+        new THREE.Vector3(36, 0.07, 22),
+        new THREE.Vector3(1, 1.035, -8),
+        "TOP_LABEL_RECESS"
+      );
+
+      // (c) Smaller inner / shutter-slide recess below the label field.
+      addBlueprintBox(
+        group,
+        new THREE.Vector3(20, 0.065, 10),
+        new THREE.Vector3(7, 1.04, 9),
+        "TOP_INNER_RECESS"
+      );
+
+      // Fine slide-rail lines around the common head channel.
+      const railLeft = makeStructuralLine([
+        new THREE.Vector3(-10.5, 1.085, 14.5),
+        new THREE.Vector3(-10.5, 1.085, 29.2)
+      ]);
+      const railRight = makeStructuralLine([
+        new THREE.Vector3(7.5, 1.085, 14.5),
+        new THREE.Vector3(7.5, 1.085, 29.2)
+      ]);
+      group.add(railLeft, railRight);
+
+      // (e) Three-line triangular insertion arrow beside the shutter opening.
+      const arrow = makeStructuralLine([
+        new THREE.Vector3(4.5, 1.1, 18.5),
+        new THREE.Vector3(9.5, 1.1, 22),
+        new THREE.Vector3(4.5, 1.1, 25.5),
+        new THREE.Vector3(4.5, 1.1, 18.5)
+      ], { depthTest: false, renderOrder: 8 });
+      const arrowStem = makeStructuralLine([
+        new THREE.Vector3(9.2, 1.1, 22),
+        new THREE.Vector3(13.5, 1.1, 22)
+      ], { depthTest: false, renderOrder: 8 });
+      group.add(arrow, arrowStem);
+
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.2 / 3.5 DUST LINER — TRUE C-SHAPED THIN EXTRUSION
+    // -------------------------------------------------------------------------
+    function createDustLiner(name) {
+      const group = new THREE.Group();
+      group.name = name;
+
+      const outerRadius = 24;
+      const innerRadius = 17;
+      const halfGap = HEAD_CHANNEL.width / 2;
+      const outerZ = Math.sqrt(outerRadius ** 2 - halfGap ** 2);
+      const innerZ = Math.sqrt(innerRadius ** 2 - halfGap ** 2);
+      const outerLeftAngle = Math.atan2(outerZ, -halfGap);
+      const outerRightAngle = Math.atan2(outerZ, halfGap);
+      const innerRightAngle = Math.atan2(innerZ, halfGap);
+      const innerLeftAngle = Math.atan2(innerZ, -halfGap);
+
+      /*
+        A conventional circular hole touching an outer-contour rectangle is an
+        invalid triangulation. This single Shape traces the outer circle, opens
+        a real rectangular-width radial cut, then traces the inner circle in
+        reverse—the valid geometric equivalent of outer circle + inner hole +
+        head-window cut, and therefore a genuinely open C rather than a decal.
+      */
+      const cShape = new THREE.Shape();
+      cShape.moveTo(-halfGap, outerZ);
+      cShape.absarc(
+        0, 0, outerRadius,
+        outerLeftAngle, outerRightAngle,
+        false
+      );
+      cShape.lineTo(halfGap, innerZ);
+      cShape.absarc(
+        0, 0, innerRadius,
+        innerRightAngle, innerLeftAngle,
+        true
+      );
+      cShape.lineTo(-halfGap, outerZ);
+      cShape.closePath();
+
+      addEdgedMesh(group, extrudeHorizontal(cShape, 0.18, 72), {
+        name: `${name}_C_RING`,
+        color: 0xe2eafa,
+        thresholdAngle: 12
+      });
+
+      // Two short fabric registration marks.
+      group.add(makeStructuralLine([
+        new THREE.Vector3(-19, 0.11, -8),
+        new THREE.Vector3(-15.5, 0.11, -10.5)
+      ]));
+      group.add(makeStructuralLine([
+        new THREE.Vector3(16, 0.11, -11),
+        new THREE.Vector3(19, 0.11, -8)
+      ]));
+
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.3 MAGNETIC DISK
+    // -------------------------------------------------------------------------
+    function createMagneticDisk() {
+      const group = new THREE.Group();
+      group.name = "MAGNETIC_DISK_GROUP";
+
+      const diskMaterial = makeManagedMaterial(MAGNETIC_BLUE);
+      const disk = addEdgedMesh(
+        group,
+        new THREE.CylinderGeometry(22, 22, 0.3, 96, 1, false),
+        {
+          name: "MAGNETIC_DISK",
+          material: diskMaterial,
+          thresholdAngle: 10,
+          edgeOpacity: 1
+        }
+      );
+      disk.renderOrder = 0;
+
+      // Three short engineering-blue specular/data-track marks.
+      const glints = [
+        [new THREE.Vector3(-16, 0.18, 7), new THREE.Vector3(-11, 0.18, 12)],
+        [new THREE.Vector3(-12, 0.18, 12), new THREE.Vector3(-8, 0.18, 16)],
+        [new THREE.Vector3(10, 0.18, -15), new THREE.Vector3(14, 0.18, -11)]
+      ];
+      glints.forEach((points) => group.add(
+        makeStructuralLine(points, { depthTest: false, renderOrder: 8 })
+      ));
+
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.4 HUB — EXTRUDED CYLINDER WITH TWO TRUE DRIVE HOLES
+    // -------------------------------------------------------------------------
+    function createHub() {
+      const group = new THREE.Group();
+      group.name = "HUB_GROUP";
+
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, 5, 0, Math.PI * 2, false);
+      shape.holes.push(circularHole(0, 0, 1.2));
+      shape.holes.push(rectangularHole(2.55, 0, 1.7, 1.7));
+
+      addEdgedMesh(group, extrudeHorizontal(shape, 0.4, 64), {
+        name: "METAL_HUB_WITH_DRIVE_HOLES",
+        color: 0xd4deef,
+        thresholdAngle: 10
+      });
+
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.6 BOTTOM SHELL — COMPOSITE GROUP
+    // -------------------------------------------------------------------------
+    function createBottomShell() {
+      const group = new THREE.Group();
+      group.name = "BOTTOM_SHELL_GROUP";
+
+      const shellShape = createChamferedShellShape();
+
+      // (b) True spindle opening through the lower shell.
+      shellShape.holes.push(circularHole(0, 0, 7));
+
+      // (f) True write-protect notch.
+      shellShape.holes.push(
+        rectangularHole(
+          WRITE_NOTCH.x,
+          WRITE_NOTCH.z,
+          WRITE_NOTCH.width,
+          WRITE_NOTCH.depth
+        )
+      );
+
+      // (g) The same true shared head-channel through-hole used by top/shutter.
+      shellShape.holes.push(
+        rectangularHole(
+          HEAD_CHANNEL.x,
+          HEAD_CHANNEL.z,
+          HEAD_CHANNEL.width,
+          HEAD_CHANNEL.depth
+        )
+      );
+
+      addEdgedMesh(group, extrudeHorizontal(shellShape, 2), {
+        name: "BOTTOM_SHELL_BODY",
+        color: PALE_BLUE,
+        thresholdAngle: 16
+      });
+
+      // (a) Ø44 central recessed annulus, with the Ø14 center left genuinely open.
+      const recessShape = new THREE.Shape();
+      recessShape.absarc(0, 0, 22, 0, Math.PI * 2, false);
+      recessShape.holes.push(circularHole(0, 0, 7));
+      const recess = addEdgedMesh(group, extrudeHorizontal(recessShape, 0.08, 72), {
+        name: "BOTTOM_DISK_RECESS",
+        color: GROOVE_BLUE,
+        thresholdAngle: 10,
+        renderOrder: 1
+      });
+      recess.position.y = 1.045;
+      const recessEdges = group.getObjectByName("BOTTOM_DISK_RECESS_EDGES");
+      recessEdges.position.y = 1.045;
+
+      // (c) Four screw / registration posts at the chamfered corners.
+      const postPositions = [
+        [-24, -24], [24, -24], [-24, 24], [24, 24]
+      ];
+      postPositions.forEach(([x, z], index) => {
+        addEdgedMesh(group, new THREE.CylinderGeometry(1.5, 1.5, 1, 24), {
+          name: `REGISTRATION_POST_${index + 1}`,
+          color: GROOVE_BLUE,
+          position: new THREE.Vector3(x, 1.36, z),
+          thresholdAngle: 12
+        });
+      });
+
+      // (d) Lifter block.
+      addBlueprintBox(
+        group,
+        new THREE.Vector3(8, 1, 4),
+        new THREE.Vector3(8, 1.35, 11),
+        "LIFTER"
+      );
+
+      // (e) Shutter-spring inset near the front edge.
+      addBlueprintBox(
+        group,
+        new THREE.Vector3(10, 0.075, 4),
+        new THREE.Vector3(8, 1.045, 25.5),
+        "SHUTTER_SPRING_RECESS"
+      );
+
+      // Small line representation of the spring itself.
+      const springPoints = [];
+      for (let i = 0; i <= 8; i++) {
+        springPoints.push(new THREE.Vector3(
+          4 + i,
+          1.1,
+          25.5 + (i % 2 === 0 ? -0.8 : 0.8)
+        ));
+      }
+      group.add(makeStructuralLine(springPoints, {
+        depthTest: false,
+        renderOrder: 8
+      }));
+
+      return group;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.7 SHUTTER — OPAQUE METAL, LEFT-OFFSET TRUE RECTANGULAR WINDOW
+    // -------------------------------------------------------------------------
+    function createShutter() {
+      const group = new THREE.Group();
+      group.name = "SHUTTER_GROUP";
+
+      // 22 (X, long axis) × 16 (Z, short axis) plate.
+      const shape = new THREE.Shape();
+      shape.moveTo(-11, -8);
+      shape.lineTo(11, -8);
+      shape.lineTo(11, 8);
+      shape.lineTo(-11, 8);
+      shape.closePath();
+
+      /*
+        Local hole center = global shared center minus assembled group center.
+        X=-5 is visibly left-offset. Width X=6 is parallel to the shutter's
+        long edge; depth Z=14 is perpendicular to that long edge.
+      */
+      const localWindowX = HEAD_CHANNEL.x - SHUTTER_ASSEMBLED.x;
+      const localWindowZ = HEAD_CHANNEL.z - SHUTTER_ASSEMBLED.z;
+      shape.holes.push(rectangularHole(
+        localWindowX,
+        localWindowZ,
+        HEAD_CHANNEL.width,
+        HEAD_CHANNEL.depth
+      ));
+
+      const metalMaterial = new THREE.MeshBasicMaterial({
+        color: METAL_BLUE_GREY,
+        transparent: false,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        depthWrite: true
+      });
+      metalMaterial.userData.opacityManaged = false;
+
+      const plate = addEdgedMesh(group, extrudeHorizontal(shape, 1, 20), {
+        name: "OPAQUE_METAL_SHUTTER",
+        material: metalMaterial,
+        opacityManaged: false,
+        thresholdAngle: 12,
+        edgeDepthTest: true,
+        renderOrder: 4
+      });
+
+      /*
+        The component anchor follows the required lower-shell Y=-1.5 state.
+        A real 3.5-inch shutter wraps around the front edge, so its visible top
+        leaf is locally lifted to the upper-shell surface while the Group itself
+        remains at assembledY=-1.5. The X/Z hole projection stays exactly shared.
+      */
+      plate.position.y = 4.15;
+      const plateEdges = group.getObjectByName("OPAQUE_METAL_SHUTTER_EDGES");
+      plateEdges.position.y = 4.15;
+
+      // Opaque folded front lip: reinforces the solid stamped-metal reading.
+      const lipMaterial = new THREE.MeshBasicMaterial({
+        color: 0x3f4d61,
+        transparent: false,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        depthWrite: true
+      });
+      lipMaterial.userData.opacityManaged = false;
+      addEdgedMesh(group, new THREE.BoxGeometry(22, 3.6, 0.55), {
+        name: "OPAQUE_SHUTTER_FRONT_FOLD",
+        material: lipMaterial,
+        opacityManaged: false,
+        position: new THREE.Vector3(0, 2.05, 7.7),
+        thresholdAngle: 12,
+        renderOrder: 3
+      });
+
+      return group;
+    }
+
+    function createWriteProtectTab() {
+      const group = new THREE.Group();
+      group.name = "WRITE_PROTECT_TAB_GROUP";
+      addEdgedMesh(group, new THREE.BoxGeometry(3, 2, 3), {
+        name: "WRITE_PROTECT_TAB",
+        color: GROOVE_BLUE,
+        thresholdAngle: 12
+      });
+      return group;
+    }
+
+    function buildAssembly() {
+      groups.topShell = createTopShell();
+      groups.upperLiner = createDustLiner("UPPER_DUST_LINER_GROUP");
+      groups.magneticDisk = createMagneticDisk();
+      groups.hub = createHub();
+      groups.lowerLiner = createDustLiner("LOWER_DUST_LINER_GROUP");
+      groups.bottomShell = createBottomShell();
+      groups.shutter = createShutter();
+      groups.writeTab = createWriteProtectTab();
+
+      Object.values(groups).forEach((group) => scene.add(group));
+    }
+
+    // -------------------------------------------------------------------------
+    // ANIMATION PART REGISTRY / DUAL POSITION STATES
+    // -------------------------------------------------------------------------
+    function setupParts() {
+      const configs = [
+        // Top-to-bottom stagger. Bottom shell deliberately moves last.
+        {
+          name: "TOP SHELL",
+          group: groups.topShell,
+          from: [0, 1.5, 0],
+          to: [0, 45, 0],
+          delay: 0,
+          explodedOpacity: 0.08
+        },
+        {
+          name: "DUST LINER UPPER",
+          group: groups.upperLiner,
+          from: [0, 1.0, 0],
+          to: [0, 30, 0],
+          delay: STAGGER,
+          explodedOpacity: 0.08
+        },
+        {
+          name: "MAGNETIC DISK",
+          group: groups.magneticDisk,
+          from: [0, 0.5, 0],
+          to: [0, 15, 0],
+          delay: STAGGER * 2,
+          explodedOpacity: 0.5
+        },
+        {
+          name: "HUB",
+          group: groups.hub,
+          from: [0, 0.7, 0],
+          to: [0, 18, 0],
+          delay: STAGGER * 3,
+          explodedOpacity: 0.08
+        },
+        {
+          name: "DUST LINER LOWER",
+          group: groups.lowerLiner,
+          from: [0, 0, 0],
+          to: [0, 0, 0],
+          delay: STAGGER * 4,
+          explodedOpacity: 0.08
+        },
+        {
+          name: "SHUTTER",
+          group: groups.shutter,
+          from: [SHUTTER_ASSEMBLED.x, SHUTTER_ASSEMBLED.y, SHUTTER_ASSEMBLED.z],
+          to: [-42, -15, 40],
+          delay: STAGGER * 5,
+          explodedOpacity: 1
+        },
+        {
+          name: "WRITE PROTECT TAB",
+          group: groups.writeTab,
+          from: [WRITE_NOTCH.x, -1.0, WRITE_NOTCH.z],
+          to: [43, -15, -40],
+          delay: STAGGER * 6,
+          explodedOpacity: 0.08
+        },
+        {
+          name: "BOTTOM SHELL",
+          group: groups.bottomShell,
+          from: [0, -1.5, 0],
+          to: [0, -15, 0],
+          delay: STAGGER * 7,
+          explodedOpacity: 0.08
+        }
+      ];
+
+      maxPartDelay = Math.max(...configs.map((config) => config.delay));
+      partMotionDuration = ANIMATION_DURATION - maxPartDelay;
+
+      configs.forEach((config) => {
+        const fromPos = new THREE.Vector3(...config.from);
+        const toPos = new THREE.Vector3(...config.to);
+        const fadeMaterials = [];
+
+        config.group.position.copy(fromPos);
+        config.group.userData.assembledY = fromPos.y;
+        config.group.userData.explodedY = toPos.y;
+        config.group.userData.assembledPosition = fromPos.clone();
+        config.group.userData.explodedPosition = toPos.clone();
+
+        config.group.traverse((object) => {
+          if (!object.isMesh) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach((material) => {
+            if (material.userData.opacityManaged !== false) {
+              material.transparent = true;
+              material.opacity = 1;
+              material.depthWrite = true;
+              material.userData.assembledOpacity = 1;
+              material.userData.explodedOpacity = config.explodedOpacity;
+              fadeMaterials.push(material);
+            }
+          });
+        });
+
+        parts.push({
+          name: config.name,
+          group: config.group,
+          fromPos,
+          toPos,
+          delay: config.delay,
+          assembledOpacity: 1,
+          explodedOpacity: config.explodedOpacity,
+          fadeMaterials
+        });
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // DASHED ASSEMBLY CONNECTORS
+    // -------------------------------------------------------------------------
+    function createDashedConnector(points, name) {
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineDashedMaterial({
+        color: BLUE,
+        dashSize: 1.6,
+        gapSize: 1.15,
+        transparent: true,
+        opacity: 0,
+        depthTest: false
+      });
+      const line = new THREE.Line(geometry, material);
+      line.name = name;
+      line.computeLineDistances(); // Mandatory for LineDashedMaterial.
+      line.visible = false;
+      line.renderOrder = 20;
+      line.userData.fade = null;
+      scene.add(line);
+      connectorLines.push(line);
+      allAnnotationLines.push(line);
+      return line;
+    }
+
+    function setupConnectors() {
+      // Four vertical dashed datum lines through the chamfer registration zones.
+      [
+        [-27, -27],
+        [27, -27],
+        [-27, 27],
+        [27, 27]
+      ].forEach(([x, z], index) => {
+        createDashedConnector([
+          new THREE.Vector3(x, -17, z),
+          new THREE.Vector3(x, 47, z)
+        ], `VERTICAL_DATUM_${index + 1}`);
+      });
+
+      // Slanted attachment paths for the two components outside the stack axis.
+      createDashedConnector([
+        new THREE.Vector3(HEAD_CHANNEL.x, -14, HEAD_CHANNEL.z),
+        new THREE.Vector3(-42, -10.85, 40)
+      ], "SHUTTER_ATTACHMENT_DATUM");
+
+      createDashedConnector([
+        new THREE.Vector3(WRITE_NOTCH.x, -14, WRITE_NOTCH.z),
+        new THREE.Vector3(43, -15, -40)
+      ], "WRITE_TAB_ATTACHMENT_DATUM");
+    }
+
+    // -------------------------------------------------------------------------
+    // CSS2D LABELS + LEADER LINES
+    // -------------------------------------------------------------------------
+    function addCallout(parent, text, anchor, labelPosition, sortOrder, elbow = null) {
+      const div = document.createElement("div");
+      div.className = "part-label";
+      div.textContent = text;
+      div.style.opacity = "0";
+
+      const label = new CSS2DObject(div);
+      label.position.copy(labelPosition);
+      label.center.set(0, 0.5); // Leader terminates at the label's left edge.
+      label.visible = false;
+      parent.add(label);
+
+      const points = elbow ? [anchor, elbow, labelPosition] : [anchor, labelPosition];
+      const line = makeStructuralLine(points, {
+        opacity: 0,
+        depthTest: false,
+        renderOrder: 21
+      });
+      line.material.transparent = true;
+      line.material.opacity = 0;
+      line.visible = false;
+      line.userData.fade = null;
+      parent.add(line);
+      allAnnotationLines.push(line);
+
+      callouts.push({
+        parent,
+        text,
+        div,
+        label,
+        line,
+        sortOrder
+      });
+    }
+
+    function setupCallouts() {
+      // TOP SHELL / HD NOTCH
+      addCallout(
+        groups.topShell,
+        "HD NOTCH",
+        new THREE.Vector3(-24.5, 1.15, -24.5),
+        new THREE.Vector3(-42, 5, -31),
+        0,
+        new THREE.Vector3(-32, 2.5, -27)
+      );
+      addCallout(
+        groups.topShell,
+        "TOP SHELL",
+        new THREE.Vector3(28, 1.1, -6),
+        new THREE.Vector3(43, 4.5, -12),
+        1,
+        new THREE.Vector3(34, 2.1, -8)
+      );
+
+      // UPPER LINER
+      addCallout(
+        groups.upperLiner,
+        "DUST LINER (UPPER)",
+        new THREE.Vector3(21, 0.2, -6),
+        new THREE.Vector3(36, 3, -10),
+        2,
+        new THREE.Vector3(29, 1.3, -8)
+      );
+
+      // HUB sits slightly above the disk in the exploded drawing.
+      addCallout(
+        groups.hub,
+        "HUB",
+        new THREE.Vector3(4.5, 0.3, 0),
+        new THREE.Vector3(18, 3.5, -3),
+        3,
+        new THREE.Vector3(11, 1.4, -1)
+      );
+      addCallout(
+        groups.magneticDisk,
+        "MAGNETIC DISK",
+        new THREE.Vector3(-18, 0.2, 9),
+        new THREE.Vector3(-37, 3.5, 15),
+        4,
+        new THREE.Vector3(-28, 1.4, 12)
+      );
+
+      // LOWER LINER
+      addCallout(
+        groups.lowerLiner,
+        "DUST LINER (LOWER)",
+        new THREE.Vector3(20, 0.15, 7),
+        new THREE.Vector3(37, 2.5, 13),
+        5,
+        new THREE.Vector3(29, 1.1, 10)
+      );
+
+      // BOTTOM SHELL and its composite details.
+      addCallout(
+        groups.bottomShell,
+        "BOTTOM SHELL",
+        new THREE.Vector3(-28, 1.05, 0),
+        new THREE.Vector3(-44, 4, -5),
+        6,
+        new THREE.Vector3(-35, 2.1, -2)
+      );
+      addCallout(
+        groups.bottomShell,
+        "LIFTER",
+        new THREE.Vector3(8, 1.9, 11),
+        new THREE.Vector3(39, 6, 5),
+        7,
+        new THREE.Vector3(25, 3.5, 8)
+      );
+      addCallout(
+        groups.bottomShell,
+        "SHUTTER SPRING",
+        new THREE.Vector3(8, 1.15, 25.5),
+        new THREE.Vector3(38, 4, 31),
+        8,
+        new THREE.Vector3(25, 2.3, 28)
+      );
+      addCallout(
+        groups.bottomShell,
+        "WRITE PROTECT NOTCH",
+        new THREE.Vector3(24.5, 1.1, -24.5),
+        new THREE.Vector3(40, 4, -34),
+        9,
+        new THREE.Vector3(33, 2.2, -29)
+      );
+
+      // Off-axis accessories.
+      addCallout(
+        groups.shutter,
+        "SHUTTER",
+        new THREE.Vector3(-10, 4.7, 5),
+        new THREE.Vector3(-24, 8, 12),
+        10,
+        new THREE.Vector3(-17, 6.2, 8)
+      );
+      addCallout(
+        groups.writeTab,
+        "WRITE PROTECT TAB",
+        new THREE.Vector3(0, 1.2, 0),
+        new THREE.Vector3(16, 5, -8),
+        11,
+        new THREE.Vector3(8, 3, -4)
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // === ANIMATION: LABEL / DATUM VISIBILITY ===
+    // -------------------------------------------------------------------------
+    function clearAnnotationTimers() {
+      while (annotationTimers.length) {
+        window.clearTimeout(annotationTimers.pop());
+      }
+    }
+
+    function scheduleAnnotation(callback, delay) {
+      const id = window.setTimeout(callback, delay);
+      annotationTimers.push(id);
+    }
+
+    function fadeLine(line, target, duration) {
+      if (target > 0) line.visible = true;
+      line.userData.fade = {
+        from: line.material.opacity,
+        to: target,
+        elapsed: 0,
+        duration
+      };
+    }
+
+    function showLabels() {
+      clearAnnotationTimers();
+
+      // First, reveal all four vertical datums and the two accessory datums.
+      scheduleAnnotation(() => {
+        if (animState !== "exploded") return;
+        connectorLines.forEach((line) => fadeLine(line, 0.88, 400));
+      }, 200);
+
+      // Then reveal labels from the highest layer downward at 60 ms intervals.
+      const ordered = [...callouts].sort((a, b) => a.sortOrder - b.sortOrder);
+      ordered.forEach((callout, index) => {
+        scheduleAnnotation(() => {
+          if (animState !== "exploded") return;
+          callout.label.visible = true;
+          fadeLine(callout.line, 0.95, 400);
+          requestAnimationFrame(() => {
+            callout.div.style.opacity = "1";
+          });
+        }, 400 + index * 60);
+      });
+    }
+
+    function hideLabels(immediate = false) {
+      clearAnnotationTimers();
+      const duration = immediate ? 0 : 300;
+
+      callouts.forEach((callout) => {
+        callout.div.style.opacity = "0";
+        if (immediate) {
+          callout.line.material.opacity = 0;
+          callout.line.visible = false;
+          callout.label.visible = false;
+          callout.line.userData.fade = null;
+        } else {
+          fadeLine(callout.line, 0, duration);
+          scheduleAnnotation(() => {
+            if (callout.line.material.opacity <= 0.001) {
+              callout.line.visible = false;
+              callout.label.visible = false;
+            }
+          }, duration + 80);
+        }
+      });
+
+      connectorLines.forEach((line) => {
+        if (immediate) {
+          line.material.opacity = 0;
+          line.visible = false;
+          line.userData.fade = null;
+        } else {
+          fadeLine(line, 0, duration);
+        }
+      });
+    }
+
+    function updateAnnotationFades(deltaMs) {
+      allAnnotationLines.forEach((line) => {
+        const fade = line.userData.fade;
+        if (!fade) return;
+        fade.elapsed += deltaMs;
+        const raw = THREE.MathUtils.clamp(fade.elapsed / Math.max(fade.duration, 1), 0, 1);
+        const eased = easeInOutCubic(raw);
+        line.material.opacity = THREE.MathUtils.lerp(fade.from, fade.to, eased);
+        if (raw >= 1) {
+          line.material.opacity = fade.to;
+          line.userData.fade = null;
+          if (fade.to <= 0) line.visible = false;
+        }
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // === ANIMATION: STATE MACHINE / TRIGGERS ===
+    // -------------------------------------------------------------------------
+    function onKeyDown(event) {
+      if (event.code !== "Space" || event.repeat) return;
+      event.preventDefault();
+
+      // Inputs during either transition are intentionally ignored.
+      if (animState === "assembled") {
+        triggerExplode();
+      } else if (animState === "exploded") {
+        triggerCollapse();
+      }
+    }
+
+    // === ANIMATION: explode trigger ===
+    function triggerExplode() {
+      if (animState !== "assembled") return;
+      animState = "exploding";
+      animationElapsed = 0;
+      hint.classList.add("is-hidden");
+      hideLabels(true);
+    }
+
+    // === ANIMATION: collapse trigger ===
+    function triggerCollapse() {
+      if (animState !== "exploded") return;
+      animState = "collapsing";
+      animationElapsed = 0;
+      collapseLeadIn = COLLAPSE_LABEL_LEAD;
+      hideLabels(false); // Labels/dashed datums fade before physical collapse.
+    }
+
+    function easeInOutCubic(t) {
+      return t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function updatePartOpacity(part, eased, reverse = false) {
+      part.fadeMaterials.forEach((material) => {
+        const explodedTarget = material.userData.explodedOpacity;
+        material.opacity = reverse
+          ? THREE.MathUtils.lerp(explodedTarget, 1, eased)
+          : THREE.MathUtils.lerp(1, explodedTarget, eased);
+
+        // Fully assembled surfaces write depth and therefore read as opaque.
+        // Once ghosted, disabling depth writes exposes blueprint internals.
+        material.depthWrite = material.opacity > 0.965;
+      });
+    }
+
+    function setAllPartsAtExploded() {
+      parts.forEach((part) => {
+        part.group.position.copy(part.toPos);
+        part.fadeMaterials.forEach((material) => {
+          material.opacity = material.userData.explodedOpacity;
+          material.depthWrite = false;
+        });
+      });
+    }
+
+    function setAllPartsAtAssembled() {
+      parts.forEach((part) => {
+        part.group.position.copy(part.fromPos);
+        part.fadeMaterials.forEach((material) => {
+          material.opacity = 1;
+          material.depthWrite = true;
+        });
+      });
+    }
+
+    // === ANIMATION: per-frame position and opacity interpolation ===
+    function updateAnimation(deltaTime) {
+      const deltaMs = deltaTime * 1000;
+
+      if (animState === "exploding") {
+        animationElapsed += deltaMs;
+
+        parts.forEach((part) => {
+          const raw = THREE.MathUtils.clamp(
+            (animationElapsed - part.delay) / partMotionDuration,
+            0,
+            1
+          );
+          const eased = easeInOutCubic(raw);
+          part.group.position.lerpVectors(part.fromPos, part.toPos, eased);
+          updatePartOpacity(part, eased, false);
+        });
+
+        if (animationElapsed >= ANIMATION_DURATION) {
+          setAllPartsAtExploded();
+          animState = "exploded";
+          animationElapsed = 0;
+          showLabels();
+        }
+      } else if (animState === "collapsing") {
+        animationElapsed += deltaMs;
+
+        // Reserve 420 ms so the 0.3–0.4 s annotation fade fully completes.
+        if (animationElapsed < collapseLeadIn) return;
+        const motionElapsed = animationElapsed - collapseLeadIn;
+
+        parts.forEach((part) => {
+          // Reverse stagger: lower pieces seat first, top shell closes last.
+          const reverseDelay = maxPartDelay - part.delay;
+          const raw = THREE.MathUtils.clamp(
+            (motionElapsed - reverseDelay) / partMotionDuration,
+            0,
+            1
+          );
+          const eased = easeInOutCubic(raw);
+          part.group.position.lerpVectors(part.toPos, part.fromPos, eased);
+          updatePartOpacity(part, eased, true);
+        });
+
+        if (motionElapsed >= ANIMATION_DURATION) {
+          setAllPartsAtAssembled();
+          animState = "assembled";
+          animationElapsed = 0;
+          hint.classList.remove("is-hidden");
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.05);
+      updateAnimation(delta);
+      updateAnnotationFades(delta * 1000);
+      controls.update();
+      renderer.render(scene, camera);
+      labelRenderer.render(scene, camera);
+    }
+
+    /*
+      ========================================================================
+      SHUTTER / CHANNEL SELF-CHECK
+      [✓] 1. SHUTTER uses opaque MeshBasicMaterial (opacity 1, transparent false)
+              and never participates in blueprint opacity interpolation.
+      [✓] 2. Its window is a real Shape hole, offset left at local X=-5. The
+              6-unit short edge is parallel to the shutter's 22-unit long edge;
+              the 14-unit long edge is perpendicular to that long edge.
+      [✓] 3. TOP SHELL (d), BOTTOM SHELL (g), and SHUTTER all consume the same
+              immutable HEAD_CHANNEL dimensions/coordinates. At assembled X/Z
+              they project into exact alignment as one magnetic-head channel.
+      ========================================================================
+    */
+  </script>
+</body>
+</html>
