@@ -63,18 +63,17 @@ const solControlDescription = solControls
       `${row.harness}/${row.effort} 为 ${row.duration_min.toFixed(1)} 分钟、质量 ${row.quality_score}/100、${row.tool_calls} 次工具调用`,
   )
   .join('；');
+const dshSum = (field) => dshCases.reduce((total, row) => total + row[field], 0);
 const lifecycleEvents = [
-  { event: 'Stream timeout occurrence', count: 20, interpretation: 'Turn continuity signal' },
-  { event: 'LLM retry', count: 15, interpretation: 'Automatic retry attempt' },
-  { event: 'Manual continuation', count: 8, interpretation: 'Unattended completion failure' },
-  { event: 'Permission mode change', count: 3, interpretation: 'Preflight contract gap' },
+  { event: 'One-shot completion', count: dshCases.filter((row) => row.one_shot_completed).length, interpretation: 'Unattended success' },
+  { event: 'LLM retry', count: dshSum('llm_retries'), interpretation: 'Automatic retry attempt' },
+  { event: 'Permission mode change', count: dshSum('permission_changes'), interpretation: 'Preflight contract gap' },
+  { event: 'Stream timeout occurrence', count: dshSum('stream_timeouts'), interpretation: 'No timeout observed' },
+  { event: 'Manual continuation', count: dshSum('manual_continues'), interpretation: 'No continuation required' },
 ];
 const errorClassHandlers = {
   'non-zero command exit': 'Return a typed error envelope with exit code and stderr',
   'stale file revision': 'Re-read and replay once with a revision token',
-  'runtime exception without failure flag': 'Detect process failure and set the tool error flag',
-  'image capability mismatch': 'Hide read_image and route to render_validate',
-  'unsupported regex feature': 'Return an executable compatibility hint',
 };
 const errorClasses = Object.entries(dshErrorAudit.summary.by_class)
   .map(([errorClass, incidents]) => {
@@ -92,27 +91,27 @@ const errorClasses = Object.entries(dshErrorAudit.summary.by_class)
 const recommendations = [
   {
     priority: 'P0',
-    workstream: 'Turn continuity',
-    proposed_change: 'Progress-aware watchdog, same-turn resume, idempotent steps, atomic completion marker.',
-    exit_signal: 'Synthetic stream interruptions recover without user continuation.',
+    workstream: 'Outcome normalization',
+    proposed_change: 'Convert every non-zero command exit into a typed failed tool result with exit code and stderr.',
+    exit_signal: 'Zero actionable subprocess failures are returned as success.',
   },
   {
     priority: 'P0',
-    workstream: 'Capability negotiation',
-    proposed_change: 'Resolve model capabilities before the turn and hide incompatible tools.',
-    exit_signal: 'Zero permanent capability-mismatch tool calls.',
-  },
-  {
-    priority: 'P0',
-    workstream: 'Visual validation',
-    proposed_change: 'Add a text/JSON render_validate oracle for console, DOM, viewport, state and image statistics.',
-    exit_signal: 'Pure-text models verify visual tasks without direct image input.',
+    workstream: 'Semantic render validation',
+    proposed_change: 'Add a text/JSON oracle for console, DOM, viewport, state transitions, orientation and label collisions.',
+    exit_signal: 'No critical geometry or viewport defect passes automated acceptance.',
   },
   {
     priority: 'P1',
-    workstream: 'Typed tool recovery',
-    proposed_change: 'Normalize non-zero exits/runtime exceptions into typed failures; make stale edits revision-aware.',
-    exit_signal: 'No actionable subprocess failure is returned as success.',
+    workstream: 'Safe edit recovery',
+    proposed_change: 'Carry revision tokens and automatically re-read and replay one stale edit.',
+    exit_signal: 'The stale-edit fixture completes within one bounded replay.',
+  },
+  {
+    priority: 'P1',
+    workstream: 'Tool-loop efficiency',
+    proposed_change: 'Budget model/tool rounds and summarize stable context before replaying it.',
+    exit_signal: 'Repeated runs reduce p50/p90 calls, tokens and elapsed time without quality loss.',
   },
   {
     priority: 'P1',
@@ -123,34 +122,34 @@ const recommendations = [
   {
     priority: 'P1',
     workstream: 'Observability',
-    proposed_change: 'Emit a stable JSON summary for versions, timings, tokens/cache, retries, errors and exit reason.',
+    proposed_change: 'Emit a stable JSON summary for preset, versions, timings, tokens/cache, retries, errors and exit reason.',
     exit_signal: 'Every benchmark run produces a schema-valid summary.',
   },
   {
     priority: 'P2',
-    workstream: 'Reproducibility and UX',
-    proposed_change: 'Pin resolved CLI integrity, add dsh resume, and explain automatic recovery states.',
-    exit_signal: 'A run can be reproduced and resumed from its manifest.',
+    workstream: 'Regression and reproducibility',
+    proposed_change: 'Pin the minimal preset manifest and repeat the matched matrix with deterministic recovery fixtures.',
+    exit_signal: 'One-shot and capability gains hold across n>=20 and injected failures.',
   },
 ];
 
 const acceptanceGates = [
   {
     gate: 'One-shot completion',
-    observed: '0/4 DSH cases',
-    preview_exit_target: '4/4 regression; then >=95% across n>=20',
+    observed: '4/4 DSH cases',
+    preview_exit_target: 'Maintain >=95% across n>=20',
     measurement: 'Completed artifact without manual continuation',
   },
   {
     gate: 'Manual continuation',
-    observed: '8 messages',
-    preview_exit_target: '0 in unattended mode',
+    observed: '0 messages',
+    preview_exit_target: 'Maintain 0 in unattended mode',
     measurement: 'Continuation messages after canonical prompt',
   },
   {
     gate: 'Capability mismatch',
-    observed: '3 read_image failures',
-    preview_exit_target: '0 after preflight',
+    observed: '0 incompatible tool calls',
+    preview_exit_target: 'Maintain 0 under capability regression tests',
     measurement: 'Permanent mismatch calls by class',
   },
   {
@@ -161,13 +160,19 @@ const acceptanceGates = [
   },
   {
     gate: 'Outcome normalization',
-    observed: '14 failures not flagged as tool errors',
+    observed: '8 non-zero exits not flagged as errors',
     preview_exit_target: '0 unflagged actionable failures',
-    measurement: 'Non-zero exits and runtime exceptions vs tool status',
+    measurement: 'Non-zero exits vs tool status',
+  },
+  {
+    gate: 'Semantic validation',
+    observed: '1/4 critical geometry defect escaped',
+    preview_exit_target: '0 critical defects accepted by render validation',
+    measurement: 'Orientation, viewport and label-collision assertions',
   },
   {
     gate: 'Permission stability',
-    observed: '3 mid-run changes',
+    observed: '1 mid-run change',
     preview_exit_target: '0 in headless mode',
     measurement: 'Permission-mode transitions per run',
   },
@@ -201,7 +206,7 @@ const recommendationSource = {
     ],
     metric_definitions: [
       'Preview exit targets are proposed acceptance thresholds and are not measured results.',
-      'Visual validation means an external harness oracle returns structured text or JSON; it does not add image input to the DeepSeek model.',
+      'Semantic render validation means an external harness oracle returns structured text or JSON; it does not add image input to the DeepSeek model.',
     ],
   },
 };
@@ -227,7 +232,7 @@ const errorSource = {
     sql: errorSql,
     executed_at: generatedAt,
     description:
-      'Materializes 23 observable actionable failures by class, affected cases, and failure surface.',
+      'Materializes 9 observable actionable failures by class, affected cases, and failure surface.',
     tables_used: [
       'analysis/dsh-error-classes.sql',
       'analysis/audit-dsh-errors.mjs',
@@ -235,11 +240,11 @@ const errorSource = {
     ],
     filters: [
       'Four DSH benchmark sessions; no sampling',
-      'Harness-declared errors plus non-zero command exits and runtime exceptions',
+      'Harness-declared errors plus non-zero command exits',
       'Benign GPU/Chrome stderr noise with successful exits excluded',
     ],
     metric_definitions: [
-      'Actionable failure count includes harness-declared tool failures, non-zero command exits, and runtime exceptions returned without a failure flag.',
+      'Actionable failure count includes harness-declared tool failures and non-zero command exits returned without a failure flag.',
       'Stream timeouts and LLM retries are tracked separately as lifecycle events.',
       'Affected cases count distinct DSH benchmark cases containing the error class.',
     ],
@@ -256,16 +261,16 @@ const errorAuditSource = {
     language: 'javascript',
     executed_at: generatedAt,
     description:
-      'Audits every DSH tool-result envelope and separates harness-declared failures from command/runtime failures embedded in successful results.',
+      'Audits every DSH tool-result envelope and separates the stale-file conflict from non-zero exits embedded in successful results.',
     tables_used: ['analysis/audit-dsh-errors.mjs', 'runs/dsh/*/session.jsonl'],
     filters: [
       'Four DSH benchmark sessions; no sampling',
-      'Declared isError results, non-zero exit markers, and JavaScript runtime exceptions',
+      'Declared isError results and non-zero exit markers',
       'GPU performance logs and other successful-exit stderr noise excluded',
     ],
     metric_definitions: [
       'Harness-declared tool failure: tool-result item has isError=true.',
-      'Command/runtime failure: non-zero exit or runtime exception is present while the tool-result is not marked as an error.',
+      'Command/runtime failure: a non-zero exit is present while the tool-result is not marked as an error.',
       'Actionable failure total = harness-declared tool failures + command/runtime failures.',
     ],
   },
@@ -282,7 +287,7 @@ const lifecycleSource = {
     sql: lifecycleSql,
     executed_at: generatedAt,
     description:
-      'Materializes stream timeout, retry, continuation, and permission-transition totals across four DSH sessions.',
+      'Materializes one-shot completion, retry, timeout, continuation, and permission-transition totals across four DSH minimal-preset sessions.',
     tables_used: [
       'analysis/dsh-lifecycle-events.sql',
       'analysis/analyze-runs.mjs',
@@ -348,7 +353,7 @@ const artifact = {
     surface: 'report',
     title: 'DSH 修改意见：Preview CLI 优化建议',
     description:
-      'A friendly, evidence-backed improvement plan for the DSH preview CLI, benchmarked against Pi and Codex using the same DeepSeek model tiers.',
+      'An evidence-backed update on the DSH minimal preset, its closed reliability gaps, remaining semantic-validation risks, and next preview exit gates.',
     generatedAt,
     sources: [
       clonedSource('benchmark_analysis'),
@@ -368,7 +373,7 @@ const artifact = {
       {
         id: 'one_shot_chart',
         title: 'One-shot completion rate by harness',
-        subtitle: 'Four cases per harness; same canonical prompt and matching DeepSeek model tiers/effort.',
+        subtitle: 'All three DeepSeek harnesses are 4/4 in the current single-run matrix; repetition is still required.',
         showDescription: true,
         type: 'horizontalBar',
         dataset: 'harness_summary',
@@ -389,8 +394,8 @@ const artifact = {
       },
       {
         id: 'lifecycle_event_chart',
-        title: 'DSH lifecycle events',
-        subtitle: 'Observed totals across four DSH sessions; counts are events, not rates.',
+        title: 'DSH minimal lifecycle signals',
+        subtitle: 'Four one-shot completions, three retries, one permission change, and no timeout or continuation.',
         showDescription: true,
         type: 'horizontalBar',
         dataset: 'lifecycle_events',
@@ -405,13 +410,13 @@ const artifact = {
         },
         yAxisTitle: 'Observed event count',
         valueFormat: 'number',
-        maxRows: 4,
+        maxRows: 5,
         layout: 'full',
       },
       {
         id: 'dsh_time_chart',
         title: 'DSH adjusted completion time',
-        subtitle: 'Minutes after removing explicit stream-idle, retry-backoff, and disconnect waits; every case still required two continuations.',
+        subtitle: 'Current minimal-preset range is 18.5–59.3 minutes; only Flash/high excludes 1.96 seconds of retry backoff.',
         showDescription: true,
         type: 'horizontalBar',
         dataset: 'dsh_cases',
@@ -435,7 +440,7 @@ const artifact = {
       {
         id: 'dsh_case_evidence',
         title: 'DSH case evidence',
-        subtitle: 'Adjusted/wall time and retry/timeout pairs are shown as compact exact values.',
+        subtitle: 'All four cases are one-shot; exact time, quality, retry, failure, and continuation evidence remains visible.',
         showDescription: true,
         dataset: 'dsh_cases',
         sourceId: 'report_query',
@@ -453,7 +458,7 @@ const artifact = {
       {
         id: 'tool_error_classes',
         title: 'Observable DSH execution failures by class',
-        subtitle: '23 actionable failures: 9 harness-declared plus 14 command/runtime failures not flagged as tool errors.',
+        subtitle: '9 actionable failures: 1 stale-file conflict plus 8 non-zero exits not flagged as tool errors.',
         showDescription: true,
         dataset: 'error_classes',
         sourceId: 'dsh_error_class_query',
@@ -507,19 +512,19 @@ const artifact = {
         id: 'technical_summary',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## Technical Summary\n\nDSH 已经能产出有竞争力的结果：4 个实现全部通过质量 rubric，最高 88/100；但它尚未形成可靠的无人值守执行闭环。相同 DeepSeek 模型档位下，DSH 0/4 one-shot，Pi/Codex 合计 8/8。重新审计四份 DSH session 后，共识别出 **23 个可操作失败**：9 个 harness-declared tool failures，以及 14 个被包装在“成功” tool-result 里的 command/runtime failures。最高优先级应是 turn 生命周期、失败结果标准化、自动恢复与能力协商，而不是把问题简单归因于模型。',
+        body: '## Technical Summary\n\nDSH 的 `minimal` preset 已经完成关键可靠性跃迁：当前四组为 **4/4 one-shot、0 次 manual continuation、0 次 stream timeout、0 次 capability mismatch**。剩余 P0 不再是 turn continuity，而是 **outcome normalization 与 semantic render validation**：277 次工具调用中仍有 8 个 non-zero exit 被包装为成功；最快的 Flash/max 虽只需 18.5 分钟，却把磁片与 Hub 旋成竖直面。建议默认使用 Flash/high（22.4 分钟、90/100），不要因速度选择 Flash/max，也不要自动升级到 Pro/max。',
       },
       {
         id: 'product_posture',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## 建议的 Preview CLI 定位\n\n建议把 DSH 描述为“生成质量已具备竞争力、执行可靠性仍在 hardening 的 Preview CLI”。这既尊重当前成果，也把改进目标落到 harness 可控制的边界：恢复、工具契约、权限预检与可观测性。',
+        body: '## 建议的 Preview CLI 定位\n\n建议把 `minimal` 描述为“已通过当前 one-shot 回归、正在强化语义验收与长期稳定性的 Preview preset”。这既承认 4/4 的实质进步，也避免把单次矩阵误写成稳定成功率。',
       },
       {
         id: 'one_shot_finding',
         type: 'markdown',
         sourceId: 'harness_summary_query',
-        body: '## 首要缺口：任务完成语义，而非错误发生率\n\nPi 与 Codex 的 8 个 case 都能在原始 prompt 后自动完成；DSH 4 个 case 均需要两次人工继续。该对比控制了模型档位和 effort，最合理的工程假设是 harness 的 turn supervisor 与恢复状态机尚不完整。',
+        body: '## 已关闭的基线缺口：DSH minimal 达到 4/4 one-shot\n\n当前 DeepSeek 矩阵中，Pi、Codex、DSH 都是 4/4 one-shot；DSH 也没有 manual continuation 或 stream timeout。这个结果足以把 turn continuity 从当前 P0 移出，但每格只有一次，下一步应通过 n>=20 与 synthetic interruption fixtures 证明它可持续。',
       },
       { id: 'one_shot_visual', type: 'chart', chartId: 'one_shot_chart', layout: 'full' },
       {
@@ -532,20 +537,20 @@ const artifact = {
         id: 'error_accounting',
         type: 'markdown',
         sourceId: 'dsh_error_audit',
-        body: '## 先修正错误口径：9 个显式工具错误，23 个可操作失败\n\n你指出的 `read_image` capability mismatch、stale-file edit 与 regex rejection 均已计入 9 个 `isError=true` 事件。进一步审计还发现 10 个 non-zero command exit 和 4 个 JavaScript runtime exception 被返回为 `isError=false`。因此只看 9/178（5.1%）会低估真实失败面；报告以下统一使用 23 个可操作失败，同时保留 9/14 分层，避免把模型脚本错误和 harness 工具契约错误混在一起。',
+        body: '## 当前错误口径：1 个显式工具错误，9 个可操作失败\n\n四份 minimal session 只有 1 个 `isError=true` stale-file conflict；另有 8 个 non-zero command exit 被返回为 `isError=false`。因此统一口径是 9/277（3.2%），并保留 1/8 分层。结果标准化仍是 P0，因为错误 flag 决定 harness 能否可靠分配恢复预算。',
       },
       {
         id: 'lifecycle_finding',
         type: 'markdown',
         sourceId: 'benchmark_analysis',
-        body: '## 生命周期证据：自动 retry 没有闭合到自动 completion\n\n四组 DSH 合计出现 20 次 stream-timeout occurrence、15 次 LLM retry、8 次人工继续和 3 次运行中权限变更。系统已经尝试恢复，但恢复结果没有可靠地回到同一个 turn 并写入完成状态。',
+        body: '## 生命周期证据：自动恢复已闭合到完成\n\n四组 DSH 合计 4 次 one-shot completion、3 次 LLM retry、0 次 stream timeout、0 次人工继续和 1 次运行中权限变更。当前恢复路径能够完成任务；剩余的 preflight 缺口是让无人值守 run 不在中途改变权限模式。',
       },
       { id: 'lifecycle_visual', type: 'chart', chartId: 'lifecycle_event_chart', layout: 'full' },
       {
         id: 'time_finding',
         type: 'markdown',
         sourceId: 'report_query',
-        body: '## 去掉断线和重试等待后，仍需压缩有效工作路径\n\n按要求扣除可识别的 300 秒 stream-idle timeout、retry backoff 和错误轮次间隔后，DSH 仍需 40.3–72.1 分钟。高 cache hit 并未抵消重复上下文重放；优先减少无效 model/tool round trip，比继续放宽 timeout 更有效。',
+        body: '## 时间主线：Flash/high 可用，Pro 档工具循环过长\n\nDSH 当前用时为 18.5–59.3 分钟，只有 Flash/high 扣除 1.96 秒 retry backoff，其余 adjusted 与 wall time 相同。Flash/high 在 22.4 分钟达到 90 分；Pro/high 用 82 次 model call、80 次 tool call 和 8.65M 输入只多 1 分。优先压缩重复 model/tool round trip，而不是调整当前未触发的 timeout。',
       },
       { id: 'time_visual', type: 'chart', chartId: 'dsh_time_chart', layout: 'full' },
       { id: 'case_table', type: 'table', tableId: 'dsh_case_evidence', layout: 'full' },
@@ -553,61 +558,61 @@ const artifact = {
         id: 'capability_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## P0 — 能力协商：纯文本模型不应看到不可执行工具\n\nDeepSeek V4 Flash/Pro 不接受图像输入。DSH 应在首个 turn 前按 model capability registry 过滤工具，隐藏 `read_image`；视觉验收改由 harness 提供 `render_validate` 外部 oracle，向模型返回 console error、DOM/viewport 边界、状态转换断言和图像统计的文本/JSON。需要语义审图时可接独立 vision evaluator，但不要把它伪装成主模型能力。',
+        body: '## 已改善 — 能力协商保持为回归护栏\n\n四组 text-only DeepSeek session 都没有调用 `read_image`，前一轮的 capability mismatch 已消失。应把 model-profile tool filtering 固化为 regression test；视觉验收继续由 harness 的外部 oracle 提供结构化文本/JSON，而不是向主模型暴露不可执行工具。',
       },
       {
         id: 'continuity_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## P0 — Turn supervisor：让恢复留在同一任务里\n\n把固定 idle timeout 改为 progress-aware watchdog：token、reasoning、tool heartbeat 任一前进就续租；断连后以幂等 step/turn ID 在同一 turn 内 resume，并由 harness 原子写入 completion marker。建议给每类恢复设置总预算，预算耗尽时才向用户报告明确的可恢复状态。',
+        body: '## P0 — Semantic render validation：页面能跑不等于几何正确\n\nFlash/max 通过加载、Space 往返和语法检查，却把磁片与 Hub 旋成竖直面。外部 `render_validate` 应返回关键部件法向/包围盒、viewport 占用、标签碰撞、状态转换和三处 shutter channel 对齐断言。纯文本主模型消费 JSON 即可；必要时再接独立 vision evaluator。',
       },
       {
         id: 'tool_contract_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## P1 — Typed tool contract：先让失败成为结构化事实\n\n`bash` 的 non-zero exit 与 runtime exception 必须返回失败状态、exit code、stderr 和 retry class，不能只把 `[exit code: 1]` 塞进 `isError=false` 的文本。再统一错误分类为 `retryable`、`permanent`、`capability_mismatch`、`permission_denied` 和 `stale_revision`。文件 edit 携带 revision token；冲突时自动 re-read + 单次 replay。',
+        body: '## P0 — Typed tool contract：8 个 non-zero exit 不能伪装成成功\n\n`bash` adapter 必须返回失败状态、exit code、stderr 与 retry class，不能只把 `[exit code: 1]` 塞进 `isError=false` 文本。错误分类至少覆盖 `retryable`、`permanent`、`permission_denied` 与 `stale_revision`；唯一的 stale conflict 用 revision token + 一次 bounded re-read/replay 处理。',
       },
       { id: 'error_class_table', type: 'table', tableId: 'tool_error_classes', layout: 'full' },
       {
         id: 'headless_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## P1 — Headless preflight：首个模型调用前固定运行契约\n\n提供显式 `--sandbox`、`--approval`、`--non-interactive` 与 capability preflight；一次性解析工作目录、可写路径、浏览器能力和工具清单。无人值守 run 中不应临时切换权限模式，也不应让模型通过失败来发现环境约束。',
+        body: '## P1 — Headless preflight：消除最后一次权限漂移\n\n提供显式 `--sandbox`、`--approval`、`--non-interactive` 与 capability preflight；一次性解析工作目录、可写路径、浏览器能力和工具清单。当前仅 Pro/high 记录 1 次权限变更，目标是无人值守 run 中保持为 0。',
       },
       {
         id: 'observability_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## P1 — Observability：让回归指标可直接比较\n\n建议稳定输出 `--json-summary`：resolved CLI/model version、effort、adjusted/wall time、TTFT、token/cache、tool errors by class、retries、timeouts、exit reason 和 artifact paths。产品门槛先看 one-shot 与 automatic recovery，再看 raw error rate；cache hit 只描述复用比例，不应当作效率结论。',
+        body: '## P1 — Observability：让 minimal preset 的收益可持续比较\n\n建议稳定输出 `--json-summary`：selected preset、resolved CLI/model version、effort、adjusted/wall time、TTFT、token/cache、model/tool calls、tool errors by class、retries、exit reason 与 artifact paths。产品门槛同时看 one-shot、semantic acceptance 与 automatic recovery；cache hit 只描述复用比例。',
       },
       {
         id: 'implementation_sequence',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## 推荐实现顺序\n\n`model profile → capability-filtered tools → turn supervisor → typed tool adapter → external render validator → JSON summary`\n\n先完成前两项 P0，即可消除最明显的永久失败和人工续跑；P1 再把恢复与观测固化成可回归的产品契约。',
+        body: '## 推荐实现顺序\n\n`typed tool adapter → semantic render validator → safe edit replay → tool-loop budget → headless preflight → JSON summary → repeated regression`\n\n前两项直接覆盖当前 8 个错误 flag 缺口与 Flash/max critical defect；随后压缩 Pro 档成本，并把本轮 one-shot/capability 收益固化为可重复证据。',
       },
       { id: 'recommendation_table', type: 'table', tableId: 'recommendation_plan', layout: 'full' },
       {
         id: 'acceptance_section',
         type: 'markdown',
         sourceId: 'dsh_recommendation_review',
-        body: '## 建议的 Preview exit gates\n\n下列阈值是下一轮开发验收建议，不是当前 n=1-per-cell 数据得出的统计结论。先用 deterministic fixtures 封住恢复语义，再把 benchmark 扩展到每格至少 20 次以报告 p50/p90 与 one-shot rate。',
+        body: '## 建议的 Preview exit gates\n\n下列阈值是下一轮开发验收建议，不是当前 n=1-per-cell 数据得出的统计结论。当前 4/4 one-shot、0 continuation、0 timeout 与 0 capability mismatch 都是待保持的绿色基线；8 个 unflagged exit、1 个 semantic escape 与 1 次权限变更仍是明确红项。',
       },
       { id: 'acceptance_table', type: 'table', tableId: 'acceptance_gates', layout: 'full' },
       {
         id: 'scope_methodology',
         type: 'markdown',
-        body: '## Scope, definitions, and methodology\n\n核心证据来自相同 canonical prompt 的 12 次 DeepSeek 执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1；另有 Pi/Codex × GPT-5.6 Sol high/xhigh/max 六次 matched control，用于交叉检查 Pi/Codex harness 行为。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff 和 error-end-to-next-turn disconnect gap。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。',
+        body: '## Scope, definitions, and methodology\n\n核心证据来自相同 canonical prompt 的 12 次 DeepSeek 执行：Pi、Codex、DSH 各 4 个模型档位/effort 组合，每格 n=1；当前 DSH 四组均使用 `minimal` agent preset。另有 Pi/Codex × GPT-5.6 Sol high/xhigh/max 六次 matched control，用于交叉检查 Pi/Codex harness 行为。DSH adjusted time 从 first user 到 completed turn 的墙钟时间中扣除可识别等待；本轮只有 Flash/high 扣除 1.96 秒 retry backoff。质量分采用功能 30、规格 30、视觉 25、验证/可维护性 15 的 rubric。',
       },
       {
         id: 'limitations',
         type: 'markdown',
-        body: '## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 23 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成跨 harness 失败率排名。DSH adjusted time 仍是保守近似。Sol 的 Pi/Codex 比较是 matched harness 对照，但不包含 DSH，也不能与 DeepSeek 聚合。Pi/Codex 的成功也不代表 DeepSeek 主模型具备视觉能力；建议的视觉方案明确依赖 harness 外部 oracle。',
+        body: '## Limitations and robustness\n\n每格仅一次执行，无法估计方差或显著性；本报告把差异用于定位工程风险，不宣称统计因果。各 harness 的工具结果 schema 不完全一致，因此 9 个 DSH 可操作失败用于 DSH 内部诊断，不直接换算成严格的跨 harness 排名。Sol 的 Pi/Codex 比较不包含 DSH，也不能与 DeepSeek 聚合。当前质量复核使用本地 headless Chrome 生成 1280×720 截图后人工检查；DSH 主模型不具备图像输入能力。',
       },
       {
         id: 'further_questions',
         type: 'markdown',
-        body: '## Further questions\n\n1. DSH 的 transport 是否能提供 heartbeat、resume cursor 与幂等 request ID？\n2. 当前 tool registry 是否能读取模型 capability profile，并在 prompt 构建前完成过滤？\n3. `read_image` 的产品目标是 host-side vision evaluator，还是应完全从纯文本模型 profile 移除？\n4. Preview release 是否愿意把 one-shot 与 synthetic recovery fixture 设为阻断门槛？',
+        body: '## Further questions\n\n1. `bash` adapter 能否在 wrapper 层可靠提取 exit code，并把 stderr 与 retry class 标准化？\n2. `render_validate` 的最小 contract 是否应先覆盖法向/包围盒、viewport、label collision 与 state transition？\n3. Pro 档能否设置 model/tool round budget，并在不降质量的前提下压缩稳定上下文？\n4. Preview release 是否愿意把 one-shot、semantic acceptance 与 synthetic recovery fixtures 同时设为阻断门槛？',
       },
     ],
   },

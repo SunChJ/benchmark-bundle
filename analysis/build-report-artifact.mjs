@@ -22,13 +22,13 @@ const quality = {
   'pi-gpt56-sol-high': [90, 'Pass', 'Clean round trip and strong geometry; exploded labels overlap around the disk/hub and lower-right components.'],
   'codex-ds-flash-high': [94, 'Pass', 'Best overall; strong exploded view, slight lower-label crowding.'],
   'pi-pro-high': [91, 'Pass', 'Best composition; minor right/bottom label crowding.'],
+  'dsh-mini-pro-high': [91, 'Pass', 'Best DSH quality; correct geometry with lower-center and lower-right label overlap.'],
+  'dsh-mini-flash-high': [90, 'Pass', 'Best DSH quality/speed trade-off; correct geometry with a slight top clip and crowded write-protect labels.'],
   'pi-flash-max': [89, 'Pass', 'Correct geometry; exploded top/bottom framing clips.'],
-  'ds-harness-flash-max': [88, 'Pass', 'Best DSH; round trip passes, minor viewport clipping.'],
-  'ds-harness-pro-high': [87, 'Pass', 'Clean DSH round trip; central labels overlap.'],
   'codex-ds-pro-high': [85, 'Pass', 'Fastest usable; correct geometry, minor top clipping.'],
-  'ds-harness-flash-high': [79, 'Pass', 'Assembled shutter detached; exploded labels overlap.'],
+  'dsh-mini-pro-max': [82, 'Pass', 'Correct geometry and round trip; undersized scene with heavy central and lower-right label overlap.'],
   'codex-ds-flash-max': [78, 'Pass', 'Complete; exploded framing over-zoomed and mislabelled.'],
-  'ds-harness-pro-max': [72, 'Pass', 'Undersized scene; labels and vertical title clipped.'],
+  'dsh-mini-flash-max': [74, 'Critical', 'Magnetic disk and hub are rotated vertically despite a clean interaction round trip.'],
   'pi-pro-max': [64, 'Critical', 'Label fade-in throws; labels never render.'],
   'codex-ds-pro-max': [53, 'Critical', 'Vertical shell caused by unrotated extrusions.'],
   'pi-flash-high': [52, 'Critical', 'Vertical shell despite extensive self-tests.'],
@@ -143,8 +143,14 @@ const codexSolMax = cases.find((row) => row.case === 'codex-gpt56-sol-max');
 const piSolHigh = cases.find((row) => row.case === 'pi-gpt56-sol-high');
 const piSolXhigh = cases.find((row) => row.case === 'pi-gpt56-sol-xhigh');
 const piSolMax = cases.find((row) => row.case === 'pi-gpt56-sol-max');
+const dshFlashHigh = cases.find((row) => row.case === 'dsh-mini-flash-high');
+const dshFlashMax = cases.find((row) => row.case === 'dsh-mini-flash-max');
+const dshProHigh = cases.find((row) => row.case === 'dsh-mini-pro-high');
+const dshProMax = cases.find((row) => row.case === 'dsh-mini-pro-max');
 const solControls = [codexSolHigh, codexSolXhigh, codexSolMax, piSolHigh, piSolXhigh, piSolMax];
 if (solControls.some((row) => !row)) throw new Error('GPT-5.6 Sol control cases are incomplete');
+const dshMinimalCases = [dshFlashHigh, dshFlashMax, dshProHigh, dshProMax];
+if (dshMinimalCases.some((row) => !row)) throw new Error('DSH minimal-preset cases are incomplete');
 const solControlSummary = solControls
   .map(
     (row) =>
@@ -188,7 +194,7 @@ const benchmarkSource = {
       'Codex/Sol high and xhigh final-response HTML materialized byte-for-byte by analysis/materialize-codex-html.mjs',
     ],
     metric_definitions: [
-      'Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to 300-second stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps.',
+      'Adjusted completion time: end-to-end completion time less DSH intervals explicitly attributable to stream-idle timeouts, retry backoff, and error-end-to-next-turn disconnect gaps. In the minimal-preset rerun, only Flash/high excludes 1.96 seconds of retry backoff.',
       'Wall duration: first benchmark user prompt to final completed turn, including DSH interruption and retry waits.',
       'One-shot completion: final artifact delivered without a manual continuation message.',
       'Tool failure rate: observable actionable failed tool calls divided by tool calls. DSH includes harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.',
@@ -209,7 +215,7 @@ const qualitySource = {
     language: 'markdown',
     executed_at: generatedAt,
     description:
-      'Scores all 18 outputs after 1280×720 browser QA of assembled/exploded states, console inspection, selected round trips, and source review.',
+      'Scores all 18 outputs after 1280×720 browser rendering, assembled/exploded/collapsed screenshot review, console inspection, and source review.',
     tables_used: [
       'analysis/quality-assessment.md',
       'runs/20260813193424/*/*.html',
@@ -221,7 +227,7 @@ const qualitySource = {
       'All 18 outputs reviewed',
       '1280×720 viewport',
       'Exploded state triggered with Space after page load',
-      'Round trip checked for leading Pi/Codex candidates, DSH Flash/max and Pro/high, and all six Sol controls',
+      'Round trip checked for leading Pi/Codex candidates, all four DSH minimal-preset cases, and all six Sol controls',
     ],
     metric_definitions: [
       'Quality score = functional correctness (30) + geometry/spec compliance (30) + visual fidelity/composition (25) + verification/maintainability (15).',
@@ -310,7 +316,7 @@ const harnessSummarySource = {
     filters: ['Twelve DeepSeek cases plus six GPT-5.6 Sol controls', 'Five execution stacks; no sampling'],
     metric_definitions: [
       'One-shot rate = cases completed without manual continuation divided by cases.',
-      'Tool failure rate = observable actionable failed tool calls divided by tool calls. DSH includes 9 harness-declared failures and 14 non-zero command exits or runtime exceptions that were not flagged as errors.',
+      'Tool failure rate = observable actionable failed tool calls divided by tool calls. DSH includes 1 harness-declared stale-file failure and 8 non-zero command exits that were not flagged as errors.',
       'Pi and Codex use the failure signals observable in their available schemas, so cross-harness failure-rate comparisons are directional rather than strictly schema-identical.',
       'Codex/Sol high and xhigh returned HTML directly with zero tool calls; Sol stack rates aggregate all three effort levels for each harness.',
       'LLM retries are observable in Pi and DSH session logs; stream timeout occurrences are observable only in DSH under the available schemas.',
@@ -341,7 +347,7 @@ artifact.manifest.charts = [
     id: 'duration_chart',
     title: 'Adjusted completion time',
     subtitle:
-      'DSH needs 40.3–72.1 active minutes after removing explicit waits; all four DSH artifacts still require two manual continuations.',
+      'DSH minimal spans 18.5–59.3 minutes and finishes 4/4 one-shot; only Flash/high excludes 1.96 seconds of retry backoff.',
     showDescription: true,
     type: 'horizontalBar',
     dataset: 'duration_cases',
@@ -365,7 +371,7 @@ artifact.manifest.charts = [
   {
     id: 'one_shot_chart',
     title: 'One-shot completion rate by execution stack',
-    subtitle: 'DeepSeek on Pi/Codex finishes 8/8 one-shot, Pi/Codex Sol controls finish 6/6, and DSH finishes 0/4.',
+    subtitle: 'Every current execution stack is 100%; DSH minimal closes the prior one-shot gap in this single-run matrix.',
     showDescription: true,
     type: 'horizontalBar',
     dataset: 'harness_summary',
@@ -388,7 +394,7 @@ artifact.manifest.charts = [
     id: 'tool_failure_chart',
     title: 'Observed actionable tool failure rate',
     subtitle:
-      'DSH is 23/178 (12.9%); Codex/Sol is 0/6 and Pi/Sol is 2/22 (9.1%).',
+      'DSH minimal is 9/277 (3.2%); eight non-zero exits are still not flagged as failed tool results.',
     showDescription: true,
     type: 'horizontalBar',
     dataset: 'tool_summary',
@@ -460,7 +466,7 @@ artifact.manifest.tables = [
   {
     id: 'case_detail',
     title: 'Case-level performance and reliability',
-    subtitle: 'DSH adjusted time excludes only identifiable waits; wall time remains visible for audit.',
+    subtitle: 'Adjusted and wall time remain visible; the DSH minimal rerun contains no stream timeout or manual continuation.',
     showDescription: true,
     dataset: 'cases',
     sourceId: 'report_query',
@@ -503,7 +509,7 @@ artifact.manifest.blocks = [
     id: 'technical_summary',
     type: 'markdown',
     sourceId: 'joined_results',
-    body: `## Technical Summary\n\n同一 canonical prompt 的 18 个单次样本由两层证据组成：**12-case DeepSeek 匹配矩阵**比较 Pi、Codex 与 DSH，另加 **6-case Pi/Codex × GPT-5.6 Sol high/xhigh/max 匹配对照**。核心结论不变：DSH 最佳输出 Flash/max 为 88/100，但 4/4 都需要两次人工“继续”，同模型 Pi/Codex 8/8 one-shot；DSH 整体 tool failure rate 为 23/178（12.9%），扣除可识别等待后仍需 40.3–72.1 分钟。Sol 对照为 ${solControlSummary}；它能直接交叉验证 Pi/Codex harness 行为，但不替代 DeepSeek 下含 DSH 的三方归因。`,
+    body: `## Technical Summary\n\n同一 canonical prompt 的 18 个单次样本由两层证据组成：**12-case DeepSeek 匹配矩阵**比较 Pi、Codex 与 DSH，另加 **6-case Pi/Codex × GPT-5.6 Sol high/xhigh/max 匹配对照**。新的 DSH \`minimal\` preset 已把最大可靠性缺口关闭到当前样本的 4/4 one-shot、0 次 manual continuation、0 次 stream timeout；可操作工具失败降至 9/277（3.2%）。但最快的 DSH Flash/max 虽仅 ${dshFlashMax.duration_min.toFixed(1)} 分钟，却因磁片与 Hub 竖直而成为 critical。默认 DSH 应选 Flash/high：${dshFlashHigh.duration_min.toFixed(1)} 分钟、${dshFlashHigh.quality_score}/100；Pro/high 只多 1 分，却需 ${dshProHigh.duration_min.toFixed(1)} 分钟。Sol 对照为 ${solControlSummary}；它用于交叉验证 Pi/Codex harness 行为，不与 DeepSeek 聚合排名。`,
   },
   {
     id: 'sol_control_section',
@@ -515,7 +521,7 @@ artifact.manifest.blocks = [
     id: 'duration_section',
     type: 'markdown',
     sourceId: 'benchmark_analysis',
-    body: `## 净执行时间：Sol 对照更快，DSH 去掉明确等待后仍慢约 2–4×\n\nSol/high 在 Codex/Pi 下分别为 ${codexSolHigh.duration_min.toFixed(1)} / ${piSolHigh.duration_min.toFixed(1)} 分钟，Sol/xhigh 为 ${codexSolXhigh.duration_min.toFixed(1)} / ${piSolXhigh.duration_min.toFixed(1)} 分钟，Sol/max 为 ${codexSolMax.duration_min.toFixed(1)} / ${piSolMax.duration_min.toFixed(1)} 分钟。DeepSeek 最可比的 Pro/high 组合中，Codex 为 10:19、Pi 为 17:30、DSH 为 40:19；DSH 墙钟时间原为 61:36，本报告按要求扣除了 21:17 的显式 stream-idle timeout、retry backoff 和错误轮次间隔。Sol 匹配对照可用于观察 Pi/Codex 差异；涉及 DSH 的结论仍以 DeepSeek 三方矩阵为准。`,
+    body: `## 净执行时间：DSH Flash/high 已接近同档 Pi/Codex，Pro 档仍形成长尾\n\nSol/high 在 Codex/Pi 下分别为 ${codexSolHigh.duration_min.toFixed(1)} / ${piSolHigh.duration_min.toFixed(1)} 分钟，Sol/xhigh 为 ${codexSolXhigh.duration_min.toFixed(1)} / ${piSolXhigh.duration_min.toFixed(1)} 分钟，Sol/max 为 ${codexSolMax.duration_min.toFixed(1)} / ${piSolMax.duration_min.toFixed(1)} 分钟。DeepSeek Flash/high 中，Codex、Pi、DSH 分别为 21.6、20.8、${dshFlashHigh.duration_min.toFixed(1)} 分钟；DSH 已进入同档时间带。Pro/high 中，Codex 与 Pi 为 10.3 / 17.5 分钟，DSH 却为 ${dshProHigh.duration_min.toFixed(1)} 分钟。DSH Flash/max 的 ${dshFlashMax.duration_min.toFixed(1)} 分钟不能作为默认依据，因为输出存在 critical orientation defect。`,
   },
   { id: 'duration_visual', type: 'chart', chartId: 'duration_chart', layout: 'full' },
   {
@@ -523,7 +529,7 @@ artifact.manifest.blocks = [
     type: 'markdown',
     sourceId: 'benchmark_analysis',
     body:
-      '## Harness 可靠性：DSH 整体 tool failure rate 是 12.9%\n\nDSH 四组 session 共 178 次工具调用，识别出 **23 个可操作失败（12.9%）**：9 个 harness-declared tool failures，以及 14 个藏在成功 envelope 里的 non-zero command exit 或 runtime exception。DeepSeek 下 Pi 为 13/94（13.8%），Codex 为 17/93（18.3%）；Sol 下 Pi 为 2/22（9.1%），Codex 为 0/6。Pi/Sol max 与 xhigh 各有一次外层隔离拒绝绝对 `/tmp` 写入，模型都随后恢复；Pi/xhigh 另自动跨过一次 WebSocket model-call failure。Codex/Sol high 与 xhigh 均未调用工具，不进入分母。日志 schema 与小样本限制意味着横向数值只作方向性参考。DSH 核心差距仍是失败结果标准化、自动恢复和 turn 生命周期。',
+      '## Harness 可靠性：DSH minimal 达到 4/4 one-shot，但失败结果仍未完全结构化\n\nDSH 四组 session 共 277 次工具调用，识别出 **9 个可操作失败（3.2%）**：1 个 harness-declared stale-file conflict，以及 8 个藏在成功 envelope 里的 non-zero command exit。当前样本没有 manual continuation、stream timeout 或 `read_image` capability mismatch，说明 minimal preset 的 turn 生命周期与能力过滤有实质进展。DeepSeek 下 Pi 为 13/94（13.8%），Codex 为 17/93（18.3%）；Sol 下 Pi 为 2/22（9.1%），Codex为 0/6。由于各 harness schema 不同、每格仅一次，失败率只作方向性诊断；DSH 下一步重点是 outcome normalization 与长期回归，而不是继续修一个当前未复现的续跑问题。',
   },
   { id: 'one_shot_visual', type: 'chart', chartId: 'one_shot_chart', layout: 'full' },
   { id: 'tool_failure_visual', type: 'chart', chartId: 'tool_failure_chart', layout: 'full' },
@@ -532,27 +538,27 @@ artifact.manifest.blocks = [
     type: 'markdown',
     sourceId: 'benchmark_analysis',
     body:
-      '## DSH preview CLI：面向一次完成的友好优化建议\n\n### P0 — 先修任务连续性与恢复语义\n\n把 300 秒 idle timeout 升级为 progress-aware watchdog：token、reasoning、tool heartbeat 任一有进展就续租；连接中断后在同一 turn 内自动 resume，并以幂等 step/turn ID 写入原子 completion marker。四组 DSH 共记录 15 次 LLM retry、20 次 timeout occurrence 和 8 次人工“继续”，这是当前最大损耗。\n\n### P0 — 基于模型能力协商工具，而不是让模型试错\n\nDeepSeek V4 Flash/Pro 都是纯文本模型。DSH 仍向其暴露 `read_image`，3/4 case 调用后得到永久 capability error。启动时应根据 model capability registry 隐藏不兼容工具；视觉任务改为外部 `render_validate` oracle，返回 console errors、DOM/viewport bounds、状态机断言、像素占用与结构化 JSON。需要语义审图时，可选独立 vision evaluator，但不要伪装成主模型能力。\n\n### P1 — 让工具契约自带可恢复性\n\n5 次 stale-file edit 应由 wrapper 携带 revision token，并在冲突时自动 re-read + 单次重放；regex 不支持 lookbehind 时应返回可直接执行的 `--pcre2` 修复提示。统一错误 taxonomy：`retryable`、`permanent`、`capability_mismatch`、`permission_denied`，由 harness 决定自动恢复预算。\n\n### P1 — 预先固化权限与 headless benchmark 模式\n\n3/4 DSH case 在中途切到 `danger-full-access`。提供显式 `--sandbox`、`--approval`、`--non-interactive` preflight，并在首个模型调用前输出可用工具/路径/浏览器能力，避免运行中改变上下文。\n\n### P1 — 对齐 Pi/Codex 的可观测性\n\n提供稳定 `--json-summary`：resolved CLI/model version、effort、adjusted/wall time、TTFT、token/cache、tool errors by class、retries、timeout、exit reason、artifact paths。回归门槛应优先看 one-shot completion 与 automatic recovery，再看 raw error rate。',
+      '## DSH preview CLI：从“续跑可靠性”转向“可验证正确性”\n\n### P0 — 统一工具结果\n\n8 次 non-zero command exit 仍被包装成 `isError=false`。`bash` adapter 应返回结构化 failure、exit code、stderr 与 retry class，让 harness 而不是模型文本解析决定恢复。唯一的 stale-file conflict 则用 revision token + 一次 bounded re-read/replay 处理。\n\n### P0 — 增加语义级 render validation\n\nFlash/max 的页面能加载、能往返、也通过语法检查，但磁片与 Hub 被转成竖直面。`render_validate` 不能只看 console 与状态机，还应输出主部件法向/包围盒、viewport 占用、标签碰撞和关键对齐断言。纯文本主模型消费 JSON 即可；语义审图可选独立 vision evaluator，但不要伪装成主模型能力。\n\n### P1 — 压缩 Pro 档工具循环\n\nPro/high 用 82 次 model call、80 次 tool call、8.65M 输入换来 91 分；相较 Flash/high 只增 1 分，却多耗约 37 分钟。建议给 tool/model rounds 和重放上下文设置预算，并将已验证的稳定上下文压成摘要。\n\n### P1 — 固化 headless preflight 与观测\n\n当前仅 Pro/high 有 1 次运行中权限变更；首个模型调用前仍应固定 sandbox、approval、可写路径和浏览器能力。稳定 `--json-summary` 需增加 selected preset、resolved CLI/model version、wall/adjusted time、token/cache、errors by class、retries、exit reason 与 artifacts。\n\n### 回归门槛\n\n把本轮 4/4 one-shot、0 timeout、0 manual continuation、0 capability mismatch 视为需长期保持的基线；至少扩到 n>=20，并加入 stream interruption、stale edit 与 orientation defect fixtures。',
   },
   {
     id: 'cache_section',
     type: 'markdown',
     sourceId: 'benchmark_analysis',
-    body: `## 缓存：高命中率无法抵消重复上下文重放\n\n12 个 DeepSeek case 的 cache hit 都高于 96.8%，但 DSH Pro/max 仍达到 11.03M 输入、75 次模型调用和 72.1 分钟净执行时间。Sol 对照更能说明 agent 路径的影响：${solControls.map((row) => `${row.harness} ${row.effort} 为 ${(row.cache_hit_rate * 100).toFixed(1)}%（${(row.total_input_tokens / 1000).toFixed(1)}k 输入、${row.tool_calls} tool calls）`).join('；')}。cache hit 描述复用比例，必须和总输入、工具循环及完成时间一起读。`,
+    body: `## 缓存：高命中率仍不能替代工具循环预算\n\n12 个 DeepSeek case 的 cache hit 都高于 96.8%，但 DSH Pro/high 仍达到 8.65M 输入、82 次模型调用和 ${dshProHigh.duration_min.toFixed(1)} 分钟；DSH Flash/max 也以 6.32M 输入得到一个 critical 输出。Sol 对照更能说明 agent 路径的影响：${solControls.map((row) => `${row.harness} ${row.effort} 为 ${(row.cache_hit_rate * 100).toFixed(1)}%（${(row.total_input_tokens / 1000).toFixed(1)}k 输入、${row.tool_calls} tool calls）`).join('；')}。cache hit 只描述复用比例，必须和总输入、工具循环、完成时间与最终质量一起读。`,
   },
   { id: 'cache_visual', type: 'chart', chartId: 'cache_chart', layout: 'full' },
   {
     id: 'quality_section',
     type: 'markdown',
     sourceId: 'quality_review',
-    body: `## 实现质量：Sol 对照扩展到 xhigh，DSH 仍缺少可靠验收闭环\n\n六组 Sol 均通过浏览器 round trip：${solControls.map((row) => `${row.harness} ${row.effort} ${row.quality_score}`).join('、')}。Pi/max 的爆炸构图与细节最好；Codex/high 主要扣分来自未落盘、未自验、顶部标签 clipping 与爆炸后提示未隐藏。DeepSeek 主矩阵中，DSH Flash/max（88）和 Pro/high（87）已进入第二梯队，说明模型生成能力不是主要瓶颈；但 DSH 的纯文本模型无法读取自身截图，最终评分仍来自外部浏览器 QA。`,
+    body: `## 实现质量：DSH high 档进入第一梯队，Flash/max 暴露验收盲区\n\n六组 Sol 均通过浏览器 round trip：${solControls.map((row) => `${row.harness} ${row.effort} ${row.quality_score}`).join('、')}。DeepSeek 主矩阵中，DSH Pro/high 为 ${dshProHigh.quality_score}，Flash/high 为 ${dshFlashHigh.quality_score}，两者都完成 assembled → exploded → collapsed 往返；Pro/max 为 ${dshProMax.quality_score}，主要问题是模型偏小与标签重叠。Flash/max 只有 ${dshFlashMax.quality_score} 且为 critical，说明“能加载 + 能动画 + 语法通过”不足以证明语义几何正确。DSH 主模型仍是纯文本，最终视觉分来自外部 1280×720 截图审查。`,
   },
   { id: 'quality_visual', type: 'chart', chartId: 'quality_chart', layout: 'full' },
   {
     id: 'frontier_section',
     type: 'markdown',
     sourceId: 'joined_results',
-    body: `## 速度—质量前沿：Sol 提供第二套 matched harness 对照\n\nSol/high 的 Pi 与 Codex 耗时接近，但 Pi 的工具化验证路径把质量从 83 提到 90；Sol/xhigh 也几乎同速（Pi ${piSolXhigh.duration_min.toFixed(1)} 分钟 / 92，Codex ${codexSolXhigh.duration_min.toFixed(1)} / 86），Pi 以 6 次工具调用换来更完整的落盘与静态检查，同时自动恢复一次 WebSocket error 与一次 sandbox failure；Sol/max 中 Pi 同时更快且质量更高（11.0 分钟 / 94，对比 13.8 / 92）。DeepSeek 吞吐首选仍是 Codex Pro/high；平衡速度与质量选 Pi Flash/max；DeepSeek 最高实现质量选 Codex Flash/high。DSH Flash/max 和 Pro/high 的质量有竞争力，但在净时间与人工介入两个维度都被同模型 Pi/Codex 支配。`,
+    body: `## 速度—质量前沿：DSH 的默认点已从 Flash/max 移到 Flash/high\n\nSol/high 的 Pi 与 Codex 耗时接近，但 Pi 的工具化验证路径把质量从 83 提到 90；Sol/xhigh 也几乎同速（Pi ${piSolXhigh.duration_min.toFixed(1)} 分钟 / 92，Codex ${codexSolXhigh.duration_min.toFixed(1)} / 86）；Sol/max 中 Pi 同时更快且质量更高（11.0 分钟 / 94，对比 13.8 / 92）。DeepSeek 吞吐首选仍是 Codex Pro/high，最高实现质量仍是 Codex Flash/high。DSH 内部应选 Flash/high（${dshFlashHigh.duration_min.toFixed(1)} 分钟 / ${dshFlashHigh.quality_score}）；Pro/high 的 1 分增益不值得额外约 37 分钟，Flash/max 虽快约 4 分钟却有 critical orientation defect，Pro/max 则更慢且质量更低。`,
   },
   {
     id: 'frontier_visual',
@@ -578,19 +584,19 @@ artifact.manifest.blocks = [
     id: 'methodology',
     type: 'markdown',
     body:
-      '## Scope, definitions, and methodology\n\n样本限定为相同 canonical prompt 的 18 次执行，每个组合仅 1 次：12 次 DeepSeek 匹配矩阵用于 Pi/Codex/DSH 对比，6 次 Pi/Codex × GPT-5.6 Sol high/xhigh/max 构成第二套 matched harness 对照。Pi/Codex 使用 one-shot 端到端完成时间；DSH adjusted time 从 first user 到 completed turn 的墙钟时间中，扣除日志明确记录的 300 秒 stream-idle timeout、retry backoff、以及 error turn 到下一 turn 的断线间隔。质量采用 30/30/25/15 rubric：功能、规格、视觉、验证/可维护性；关键运行时或语义几何缺陷覆盖数值排名。',
+      '## Scope, definitions, and methodology\n\n样本限定为相同 canonical prompt 的 18 次执行，每个组合仅 1 次：12 次 DeepSeek 匹配矩阵用于 Pi/Codex/DSH 对比，6 次 Pi/Codex × GPT-5.6 Sol high/xhigh/max 构成第二套 matched harness 对照。当前 DSH 四组均使用 `minimal` agent preset。Adjusted time 从 first user 到 completed turn 的墙钟时间中扣除日志明确记录的 stream-idle timeout、retry backoff 与断线间隔；本轮只有 DSH Flash/high 扣除 1.96 秒 retry backoff。质量采用 30/30/25/15 rubric：功能、规格、视觉、验证/可维护性；关键运行时或语义几何缺陷覆盖数值排名。',
   },
   {
     id: 'limitations',
     type: 'markdown',
     body:
-      '## Limitations and robustness\n\n每格 n=1，不能估计方差或显著性。Sol 的 Pi/Codex 同档位比较是 matched harness 对照，但协议实现与默认 system/tool contract 仍不同，结论只作工程假设。Codex/Sol high 与 xhigh 未自行写文件，浏览器 QA 使用从最终响应原样物化的 HTML；其余 Sol 静态检查也不等于浏览器视觉验收。Sol 与 DeepSeek 不同模型族，不能混合成模型排名。DSH adjusted time 仍是保守近似；各 harness 的工具失败 schema 也非严格同构。质量含人工视觉判断，DSH 主模型不具备图像输入能力。',
+      '## Limitations and robustness\n\n每格 n=1，不能估计方差或显著性；DSH 的 4/4 one-shot 是值得回归验证的当前基线，不是长期成功率。Sol 的 Pi/Codex 同档位比较是 matched harness 对照，但协议实现与默认 system/tool contract 仍不同。Codex/Sol high 与 xhigh 未自行写文件，浏览器 QA 使用从最终响应原样物化的 HTML。Sol 与 DeepSeek 不同模型族，不能混合成模型排名。各 harness 的工具失败 schema 非严格同构。质量含人工截图判断；当前审查因 in-app browser 不可用而采用本地 headless Chrome 渲染，DSH 主模型本身不具备图像输入能力。',
   },
   {
     id: 'recommendations',
     type: 'markdown',
     body:
-      '## Recommended operating policy\n\n1. DeepSeek 任务的当前默认仍使用 `Codex + DeepSeek V4 Pro + high`。\n2. GPT-5.6 Sol 保持 Pi/Codex 双 control lane；当前单次结果中 Pi/max 最强，但先扩样再决定默认 harness。\n3. DSH 在无人值守 benchmark 中先设 one-shot completion gate；P0 修复前不以最终 quality 分掩盖续跑失败。\n4. 下一轮每格至少 5 次，记录 p50/p90、one-shot rate、automatic recovery rate、TTFT、成本与失败 taxonomy。',
+      '## Recommended operating policy\n\n1. DeepSeek 全局吞吐默认仍使用 `Codex + DeepSeek V4 Pro + high`；最高质量使用 `Codex + DeepSeek V4 Flash + high`。\n2. DSH 默认使用 `minimal + Flash + high`；阻止 Flash/max 自动晋级，并避免自动升级到 Pro/max。\n3. 把 DSH 的 4/4 one-shot、0 timeout、0 manual continuation 与 0 capability mismatch 固化为回归门槛；P0 转向 typed tool outcomes 与 semantic render validation。\n4. 下一轮每格至少 5 次，随后扩到 n>=20，记录 p50/p90、one-shot、automatic recovery、model/tool calls、token、TTFT、成本与失败 taxonomy。',
   },
 ];
 

@@ -8,7 +8,7 @@
 - Mark: Horizontal bar
 - Sort: Ascending by `duration_min`
 - Source: `analysis/analyze-runs.mjs`
-- Caveat: DSH rows are human-assisted completions; Pi/Codex rows are one-shot. DSH adjusted time removes logged 300-second idle timeouts, retry backoff, and error-end-to-next-turn gaps.
+- Caveat: All current DSH minimal-preset rows are one-shot. Adjusted time differs from wall time only for Flash/high, where 1.96 seconds of logged retry backoff are excluded.
 
 ## One-shot completion rate
 
@@ -17,6 +17,7 @@
 - Fields: `stack_label`, `stack`, `one_shot_rate`
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
+- Caveat: Every current stack is 100% in this single-run matrix; use this chart as a regression-status view, not evidence of equal long-run reliability.
 
 ## Observed actionable tool failure rate
 
@@ -25,7 +26,7 @@
 - Fields: `stack_label`, `stack`, `tool_failure_rate`, `tool_failures`, `tool_calls`
 - Mark: Horizontal bar
 - Source: `analysis/analyze-runs.mjs`
-- DSH definition: harness-declared errors plus non-zero command exits and runtime exceptions embedded in otherwise successful tool-result envelopes.
+- DSH definition: the current minimal-preset audit contains one harness-declared stale-file conflict plus eight non-zero command exits embedded in otherwise successful tool-result envelopes.
 - Caveat: This is an incidence metric, not a severity metric. Pi and Codex use the failure signals observable in their respective schemas, so the cross-harness comparison is directional rather than strictly schema-identical.
 - Control handling: Sol stack rates aggregate the high, xhigh, and max controls for each harness. Codex/Sol high and xhigh made zero tool calls and therefore do not add to that stack's denominator.
 
