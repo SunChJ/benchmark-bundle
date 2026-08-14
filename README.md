@@ -10,9 +10,15 @@ HTML reports.
 
 The current raw DSH evidence under `runs/dsh/` contains the four
 `dsh-mini-{flash,pro}-{high,max}` cases rerun with DSH's `minimal` agent preset.
-The checked-in browser quality assessment and HTML reports are the preceding
-reviewed snapshot; regenerate them only after the mini outputs receive the same
-external browser review.
+The quality assessment, SQL materializations, chart, and both HTML reports have
+been regenerated from those sessions and an external 1280×720
+assembled/exploded/collapsed review.
+
+The current DSH recommendation is `minimal + Flash + high`: it completes
+one-shot in 22.4 minutes with a 90/100 quality score. Pro/high reaches 91/100 but
+takes 59.3 minutes; Pro/max is slower and visually weaker. Do not select
+Flash/max solely for its 18.5-minute runtime—the magnetic disk and hub are
+rotated vertically, so the result is marked critical.
 
 The included launcher prepares isolated case directories and prints interactive
 CLI commands; it does not launch a terminal, submit the prompt, or monitor the
@@ -22,7 +28,7 @@ are preserved as benchmark evidence.
 ## Reports
 
 1. [DeepSeek CLI Harness benchmark report](output/pdf/deepseek-cli-harness-report/report.html) — the primary 12-case Pi vs Codex vs DSH matched-model comparison plus six Pi/Codex × GPT-5.6 Sol controls across completion time, one-shot completion, input/cache behavior, tool failures, and implementation quality.
-2. [DSH preview CLI recommendations](output/pdf/dsh-preview-cli-recommendations/report.html) — a focused, friendly review of DSH's recovery semantics, capability negotiation, tool contracts, visual validation, and observability roadmap.
+2. [DSH preview CLI recommendations](output/pdf/dsh-preview-cli-recommendations/report.html) — a focused review of the `minimal` preset's one-shot improvement, remaining tool-result contract gaps, semantic render validation, efficiency, and preview exit gates.
 
 Both reports are delivered as self-contained HTML. Their reviewed
 `artifact.json` payloads and `verification.md` records live beside each report;
@@ -31,8 +37,9 @@ PDF copies are intentionally not retained.
 ![Adjusted completion time vs implementation quality](assets/adjusted-completion-time-vs-quality.png)
 
 Point labels use complete `cli-model/reasoning` names such as `codex-sol/high`,
-`pi-pro/max`, and `dsh-flash/high`; color identifies the CLI harness. DSH adjusted time excludes explicit
-disconnect and retry waits; use the primary report for definitions and caveats.
+`pi-pro/max`, and `dsh-flash/high`; color identifies the CLI harness. In the
+current DSH minimal rerun, adjusted time differs from wall time only for
+Flash/high, where 1.96 seconds of retry backoff are excluded.
 
 ## Evidence and metadata map
 
@@ -45,7 +52,7 @@ reviewed projections of this evidence, not replacements for it.
 | Pi session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/pi/sessions/*.jsonl` | Model messages, tool calls/results, token/cache usage, and timing events. |
 | Codex session metadata | `runs/<timestamp>/<case>/.benchmark-runtime/codex/sessions/**/*.jsonl` | Rollout events, tool outcomes, token/cache usage, and timing events. |
 | DSH minimal-preset session metadata | `runs/dsh/dsh-mini-<tier>-<effort>/session.jsonl` | Turn lifecycle, retries, sandbox changes, tool calls/results, usage data, and selected agent preset. |
-| Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations, browser QA images, Pi session exports, and DSH preview images. |
+| Generated evidence | `runs/<timestamp>/<case>/` and `runs/dsh/<case>/` | HTML implementations and case-local benchmark evidence. |
 | Normalized case metrics | [`analysis/analyze-runs.mjs`](analysis/analyze-runs.mjs) | Reconciles the three session schemas into comparable case-level metrics. |
 | Quality review | [`analysis/quality-assessment.md`](analysis/quality-assessment.md) | Browser-reviewed rubric, critical defects, and scoring rationale. |
 | DSH failure audit | [`analysis/audit-dsh-errors.mjs`](analysis/audit-dsh-errors.mjs) | Reconciles harness-declared failures with non-zero exits and runtime exceptions. |
@@ -62,7 +69,14 @@ creating and openly sharing this rigorous benchmark prompt.
 
 ## A note for DSH
 
-DSH could learn from Pi's
+The `minimal` preset closes the previous one-shot and incompatible-tool gaps in
+this sample: 4/4 cases finish without continuation or stream timeout, and none
+attempt `read_image`. The next priorities are to flag all non-zero command exits
+as typed failures, add semantic geometry/viewport/label checks to the render
+validator, and reduce the Pro-tier model/tool loop. Repeated runs are still
+required before treating 4/4 as a stable success rate.
+
+DSH could also learn from Pi's
 [AgentHarness implementation specification](https://github.com/earendil-works/pi/blob/main/packages/agent/docs/harness.md)
 and publish a similarly explicit harness contract. That would give contributors
 a clear development roadmap and help align the upper-layer design before
